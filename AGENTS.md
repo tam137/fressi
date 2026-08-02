@@ -7,7 +7,7 @@ Agents do not change this AGENTS.md file.
 
 ## 1. Project Overview & Architecture
 
-* **Tech Stack:** Single responsive page built with PHP 8.1, Vanilla JavaScript (`src/js/app.js`), and Vanilla CSS (`src/css/style.css`). Needs also optimized for mobile displays.
+* **Tech Stack:** Single responsive page built with PHP 8.1, Vanilla JavaScript (`src/js/app.js`), and Vanilla CSS (`src/css/style.css`). Needs highly optimized for mobile displays.
 
 ---
 
