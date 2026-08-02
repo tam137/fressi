@@ -1,7 +1,30 @@
 <?php
 // FRESSI — Single Page Responsive Web Application
-// PHP Backend AJAX Endpoint Handling
+require_once 'auth_helper.php';
 
+// Authentifizierung erzwingen (Sitzung oder Remember-Me Cookie)
+if (!check_remember_me()) {
+    header('Location: login.php');
+    exit;
+}
+
+try {
+    $pdo = get_db_connection();
+    // Aktuellen Benutzerstatus prüfen (ob Konto aktiv ist)
+    $stmt = $pdo->prepare("SELECT id, username, is_active, role FROM accounts WHERE id = :id");
+    $stmt->execute(['id' => $_SESSION['user_id']]);
+    $user = $stmt->fetch();
+
+    if (!$user || !$user['is_active']) {
+        header('Location: logout.php');
+        exit;
+    }
+} catch (Exception $e) {
+    error_log("Security check failed: " . $e->getMessage());
+    die("Systemfehler. Zugriff verweigert.");
+}
+
+// PHP Backend AJAX Endpoint Handling
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_contact'])) {
     header('Content-Type: application/json');
     $name = filter_input(INPUT_POST, 'name', FILTER_SANITIZE_SPECIAL_CHARS);
@@ -13,7 +36,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_contact'])) {
         exit;
     }
 
-    // In production, send mail or store in database here
     echo json_encode([
         'status' => 'success',
         'message' => 'Vielen Dank, ' . htmlspecialchars($name) . '! Deine Nachricht wurde erfolgreich übermittelt.'
@@ -51,6 +73,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_contact'])) {
             </ul>
 
             <div class="nav-actions">
+                <div class="user-badge" title="Eingeloggt als <?php echo htmlspecialchars($user['username']); ?>">
+                    <span>Hallo, <strong><?php echo htmlspecialchars(ucfirst($user['username'])); ?></strong></span>
+                </div>
+                <a href="logout.php" class="chip-btn" title="Abmelden" style="background: rgba(247, 37, 133, 0.15); border-color: rgba(247, 37, 133, 0.3); color: #ff4d6d;">
+                    Abmelden 🚪
+                </a>
                 <button id="fav-toggle-btn" class="fav-toggle-btn" title="Gespeicherte Favoriten">
                     ❤️
                     <span id="fav-count" class="fav-badge">0</span>

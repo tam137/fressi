@@ -1,0 +1,8 @@
+# Disable caching for dynamic PHP and HTML pages
+<IfModule mod_headers.c>
+    <FilesMatch "\.(php|html|htm)$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate, max-age=0"
+        Header set Pragma "no-cache"
+        Header set Expires "0"
+    </FilesMatch>
+</IfModule>
