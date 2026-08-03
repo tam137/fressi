@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Steam lines (Orange Accent) -->
+  <g fill="none" stroke="#FF6B35" stroke-width="28" stroke-linecap="round">
+    <!-- Left steam stroke -->
+    <path d="M 176 170 C 160 130 192 100 176 60" />
+    <!-- Middle steam stroke -->
+    <path d="M 256 170 C 240 120 272 90 256 40" />
+    <!-- Right steam stroke -->
+    <path d="M 336 170 C 320 130 352 100 336 60" />
+  </g>
+
+  <!-- Steaming Bowl Body (Clean White) -->
+  <g fill="#FFFFFF">
+    <!-- Rim of the bowl -->
+    <path d="M 96 210 C 96 198 106 188 118 188 L 394 188 C 406 188 416 198 416 210 C 416 222 406 232 394 232 L 118 232 C 106 232 96 222 96 210 Z" />
+    
+    <!-- Main Bowl Base -->
+    <path d="M 118 248 L 394 248 C 394 340 330 420 256 420 C 182 420 118 340 118 248 Z" />
+
+    <!-- Bowl Foot Stand -->
+    <path d="M 192 432 L 320 432 C 328 432 336 438 336 446 C 336 454 328 460 320 460 L 192 460 C 184 460 176 454 176 446 C 176 438 184 432 192 432 Z" />
+  </g>
+</svg>
