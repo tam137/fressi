@@ -78,6 +78,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             justify-content: center;
             padding: 2rem 1rem;
             position: relative;
+            width: 100%;
+            max-width: 100%;
+            overflow: hidden;
         }
 
         .login-card {
@@ -86,6 +89,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 2.8rem 2.2rem;
             position: relative;
             z-index: 10;
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 1.5rem 0.75rem;
+            }
+            .login-card {
+                padding: 2rem 1.25rem;
+            }
         }
 
         .login-header {
