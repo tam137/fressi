@@ -10,4 +10,8 @@ $db_config = [
     'user' => 'web_login_user',
     'password' => 'YOUR_DATABASE_PASSWORD_HERE'
 ];
+
+// Google Gemini API configuration
+// Replace placeholder with your actual Gemini API key from Google AI Studio
+$gemini_key = 'YOUR_GEMINI_API_KEY_HERE';
 ?>

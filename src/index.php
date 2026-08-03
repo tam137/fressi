@@ -41,12 +41,13 @@ try {
  * @return array ['success' => bool, 'text' => string|null, 'error' => string|null]
  */
 function analyze_image_with_gemini($filePath, $mimeType) {
-    $apiKey = getenv('gemini_key') ?: getenv('GEMINI_KEY') ?: ($_ENV['gemini_key'] ?? $_ENV['GEMINI_KEY'] ?? ($_SERVER['gemini_key'] ?? $_SERVER['GEMINI_KEY'] ?? null));
+    global $gemini_key, $config, $db_config;
+    $apiKey = $gemini_key ?? ($config['gemini_key'] ?? ($db_config['gemini_key'] ?? (getenv('gemini_key') ?: (getenv('GEMINI_KEY') ?: null))));
 
-    if (empty($apiKey)) {
+    if (empty($apiKey) || $apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
         return [
             'success' => false,
-            'error' => 'Gemini API-Schlüssel (gemini_key) ist nicht in den Umgebungsvariablen hinterlegt.'
+            'error' => 'KI-Analyse nicht eingerichtet.'
         ];
     }
 
