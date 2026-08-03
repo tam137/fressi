@@ -33,6 +33,117 @@ try {
     die("Systemfehler. Zugriff verweigert.");
 }
 
+/**
+ * Analysiert ein Bild mittels Google Gemini API.
+ * 
+ * @param string $filePath Pfad zur Bilddatei
+ * @param string $mimeType MIME-Typ des Bildes
+ * @return array ['success' => bool, 'text' => string|null, 'error' => string|null]
+ */
+function analyze_image_with_gemini($filePath, $mimeType) {
+    $apiKey = getenv('gemini_key') ?: getenv('GEMINI_KEY') ?: ($_ENV['gemini_key'] ?? $_ENV['GEMINI_KEY'] ?? ($_SERVER['gemini_key'] ?? $_SERVER['GEMINI_KEY'] ?? null));
+
+    if (empty($apiKey)) {
+        return [
+            'success' => false,
+            'error' => 'Gemini API-Schlüssel (gemini_key) ist nicht in den Umgebungsvariablen hinterlegt.'
+        ];
+    }
+
+    if (!file_exists($filePath)) {
+        return [
+            'success' => false,
+            'error' => 'Bilddatei konnte für die Analyse nicht gefunden werden.'
+        ];
+    }
+
+    $imageData = file_get_contents($filePath);
+    if ($imageData === false) {
+        return [
+            'success' => false,
+            'error' => 'Bilddatei konnte nicht gelesen werden.'
+        ];
+    }
+
+    $base64Image = base64_encode($imageData);
+
+    // Modelle versuchen: gemini-2.5-flash (Standard), falls nicht vorhanden gemini-1.5-flash
+    $models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+    $lastError = 'Unbekannter Fehler';
+
+    foreach ($models as $model) {
+        $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . $model . ':generateContent?key=' . urlencode($apiKey);
+
+        $payload = [
+            'contents' => [
+                [
+                    'parts' => [
+                        [
+                            'text' => 'Beschreibe in 1-2 kurzen Sätzen prägnant auf Deutsch, was auf diesem Bild zu sehen ist.'
+                        ],
+                        [
+                            'inline_data' => [
+                                'mime_type' => $mimeType,
+                                'data' => $base64Image
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ];
+
+        $jsonPayload = json_encode($payload);
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+            CURLOPT_POSTFIELDS     => $jsonPayload,
+            CURLOPT_TIMEOUT        => 25,
+            CURLOPT_CONNECTTIMEOUT => 10
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($response === false || !empty($curlErr)) {
+            $lastError = 'Verbindung zur Gemini API fehlgeschlagen: ' . ($curlErr ?: 'Unbekannter Fehler');
+            continue;
+        }
+
+        if ($httpCode !== 200) {
+            $errorData = json_decode($response, true);
+            $msg = $errorData['error']['message'] ?? ('HTTP Status ' . $httpCode);
+            $lastError = 'Gemini API Fehler (' . $model . '): ' . $msg;
+            if ($httpCode === 404) {
+                // Bei 404 nächstes Modell versuchen
+                continue;
+            }
+            break;
+        }
+
+        $responseData = json_decode($response, true);
+        $description = $responseData['candidates'][0]['content']['parts'][0]['text'] ?? null;
+
+        if (!empty($description)) {
+            return [
+                'success' => true,
+                'text' => trim($description)
+            ];
+        } else {
+            $lastError = 'Keine gültige Text-Antwort von Gemini erhalten.';
+        }
+    }
+
+    return [
+        'success' => false,
+        'error' => $lastError
+    ];
+}
+
 // PHP Backend AJAX Endpoint für Foto-Upload
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_upload'])) {
     header('Content-Type: application/json');
@@ -104,14 +215,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_upload'])) {
         exit;
     }
 
+    // 5. Bildanalyse mittels Gemini API durchführen
+    $aiResult = analyze_image_with_gemini($targetPath, $mimeType);
+
+    if (!$aiResult['success']) {
+        // Upload ablehnen und hochgeladene Datei löschen
+        @unlink($targetPath);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Upload abgelehnt: KI-Bildanalyse fehlgeschlagen (' . $aiResult['error'] . ')'
+        ]);
+        exit;
+    }
+
     $webPath = 'uploads/photos/' . $newFileName;
 
     echo json_encode([
         'status' => 'success',
-        'message' => 'Foto erfolgreich auf dem Server gespeichert!',
+        'message' => 'Foto erfolgreich gespeichert!',
         'filename' => $newFileName,
         'path' => $webPath,
-        'uploaded_at' => date('d.m.Y H:i:s')
+        'uploaded_at' => date('d.m.Y H:i:s'),
+        'ai_description' => $aiResult['text']
     ]);
     exit;
 }

@@ -73,10 +73,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function uploadPhoto(file) {
-    showStatus('Foto wird auf den Server übertragen... ⏳', 'info');
+    showStatus('Foto wird hochgeladen & von KI analysiert... ⏳', 'info');
     if (triggerBtn) {
       triggerBtn.disabled = true;
-      triggerBtn.innerHTML = `<span>Wird hochgeladen...</span> ⏳`;
+      triggerBtn.innerHTML = `<span>Wird analysiert...</span> ⏳`;
     }
 
     const formData = new FormData();
@@ -92,11 +92,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const result = await response.json();
 
       if (result.status === 'success') {
-        showStatus(`<strong>✅ ${result.message}</strong><br><small style="opacity: 0.85; margin-top: 4px; display: inline-block;">Datei: <code>${result.filename}</code> (${result.uploaded_at})</small>`, 'success');
-        showToast('Foto erfolgreich gespeichert! 🎉');
+        let statusHtml = `<strong>✅ ${result.message}</strong><br><small style="opacity: 0.85; margin-top: 4px; display: inline-block;">Datei: <code>${result.filename}</code> (${result.uploaded_at})</small>`;
+        if (result.ai_description) {
+          statusHtml += `<div class="ai-description" style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.15); text-align: left;">🤖 <strong>KI-Erkenntnis:</strong> ${escapeHtml(result.ai_description)}</div>`;
+        }
+        showStatus(statusHtml, 'success');
+        showToast('Foto erfolgreich gespeichert & analysiert! 🎉');
       } else {
-        showStatus(`<strong>❌ Upload fehlgeschlagen:</strong> ${result.message || 'Unbekannter Fehler.'}`, 'error');
-        showToast('Fehler beim Speichern! ❌');
+        showStatus(`<strong>❌ Upload abgelehnt:</strong> ${escapeHtml(result.message || 'Unbekannter Fehler.')}`, 'error');
+        showToast('Upload abgelehnt! ❌');
       }
     } catch (err) {
       console.error('Upload Error:', err);
@@ -109,6 +113,19 @@ document.addEventListener('DOMContentLoaded', () => {
         triggerBtn.innerHTML = `Foto aufnehmen 📷`;
       }
     }
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>"']/g, function(m) {
+      return {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      }[m];
+    });
   }
 
   // Helper Functions
