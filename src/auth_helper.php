@@ -48,6 +48,13 @@ function get_db_connection() {
         return $pdo;
     } catch (PDOException $e) {
         error_log("Database connection failure: " . $e->getMessage());
+        $is_ajax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || isset($_POST['ajax_upload']);
+        if ($is_ajax) {
+            header('Content-Type: application/json');
+            http_response_code(500);
+            echo json_encode(['status' => 'error', 'message' => 'Systemfehler. Verbindung zur Datenbank fehlgeschlagen.']);
+            exit;
+        }
         die("Systemfehler. Verbindung zur Datenbank fehlgeschlagen.");
     }
 }

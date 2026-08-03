@@ -86,12 +86,32 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const response = await fetch('index.php', {
         method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest'
+        },
         body: formData
       });
 
-      const result = await response.json();
+      const contentType = response.headers.get('content-type') || '';
 
-      if (result.status === 'success') {
+      let result;
+      if (contentType.includes('application/json')) {
+        result = await response.json();
+      } else {
+        const text = await response.text();
+        console.warn('Server returned non-JSON response:', text);
+
+        if (text.includes('<!DOCTYPE html>') || text.includes('<html')) {
+          if (text.includes('post_max_size') || response.status === 413) {
+            throw new Error('Die Datei ist zu groß für den Upload auf dem Server.');
+          }
+          throw new Error('Server-Antwort ungültig (Sitzung eventuell abgelaufen). Bitte Seite neu laden.');
+        }
+
+        throw new Error(text.trim() || `Serverfehler (HTTP ${response.status})`);
+      }
+
+      if (response.ok && result.status === 'success') {
         let statusHtml = `<strong>✅ ${result.message}</strong><br><small style="opacity: 0.85; margin-top: 4px; display: inline-block;">Datei: <code>${result.filename}</code> (${result.uploaded_at})</small>`;
         if (result.ai_description) {
           statusHtml += `<div class="ai-description" style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.15); text-align: left;">🤖 <strong>KI-Erkenntnis:</strong> ${escapeHtml(result.ai_description)}</div>`;
@@ -99,12 +119,17 @@ document.addEventListener('DOMContentLoaded', () => {
         showStatus(statusHtml, 'success');
         showToast('Foto erfolgreich gespeichert & analysiert! 🎉');
       } else {
-        showStatus(`<strong>❌ Upload abgelehnt:</strong> ${escapeHtml(result.message || 'Unbekannter Fehler.')}`, 'error');
+        const errMsg = result.message || 'Unbekannter Fehler.';
+        showStatus(`<strong>❌ Upload abgelehnt:</strong> ${escapeHtml(errMsg)}`, 'error');
         showToast('Upload abgelehnt! ❌');
       }
     } catch (err) {
       console.error('Upload Error:', err);
-      showStatus('<strong>❌ Fehler:</strong> Netzwerk- oder Serververbindung fehlgeschlagen.', 'error');
+      const isNetworkErr = err.name === 'TypeError' || err.message.includes('fetch');
+      const displayMsg = !isNetworkErr && err.message
+        ? escapeHtml(err.message)
+        : 'Netzwerk- oder Serververbindung fehlgeschlagen.';
+      showStatus(`<strong>❌ Fehler:</strong> ${displayMsg}`, 'error');
       showToast('Verbindungsfehler! ❌');
     } finally {
       if (photoInput) photoInput.value = '';

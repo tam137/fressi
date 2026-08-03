@@ -20,7 +20,7 @@ try {
     $user = $stmt->fetch();
 
     if (!$user || !$user['is_active']) {
-        if (isset($_POST['ajax_upload'])) {
+        if ((!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || isset($_POST['ajax_upload'])) {
             header('Content-Type: application/json');
             echo json_encode(['status' => 'error', 'message' => 'Konto deaktiviert.']);
             exit;
@@ -30,6 +30,11 @@ try {
     }
 } catch (Exception $e) {
     error_log("Security check failed: " . $e->getMessage());
+    if ((!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || isset($_POST['ajax_upload'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'error', 'message' => 'Systemfehler. Zugriff verweigert.']);
+        exit;
+    }
     die("Systemfehler. Zugriff verweigert.");
 }
 
@@ -68,8 +73,8 @@ function analyze_image_with_gemini($filePath, $mimeType) {
 
     $base64Image = base64_encode($imageData);
 
-    // Modelle versuchen: gemini-2.5-flash (Standard), falls nicht vorhanden gemini-1.5-flash
-    $models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+    // Modelle versuchen: gemini-3.6-flash (Standard), gefolgt von weiteren aktuellen Flash-Modellen
+    $models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
     $lastError = 'Unbekannter Fehler';
 
     foreach ($models as $model) {
@@ -146,8 +151,19 @@ function analyze_image_with_gemini($filePath, $mimeType) {
 }
 
 // PHP Backend AJAX Endpoint für Foto-Upload
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_upload'])) {
+$isAjaxRequest = ($_SERVER['REQUEST_METHOD'] === 'POST') && (
+    isset($_POST['ajax_upload']) ||
+    (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+);
+
+if ($isAjaxRequest) {
     header('Content-Type: application/json');
+
+    // Abfangen von post_max_size Overflow (falls $_POST & $_FILES durch PHP gelöscht wurden)
+    if (empty($_POST) && empty($_FILES) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+        echo json_encode(['status' => 'error', 'message' => 'Die hochgeladene Datei überschreitet die maximale Server-Uploadgröße (post_max_size).']);
+        exit;
+    }
 
     if (!isset($_FILES['photo']) || $_FILES['photo']['error'] !== UPLOAD_ERR_OK) {
         $errorCode = $_FILES['photo']['error'] ?? 'missing';
