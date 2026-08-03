@@ -4,18 +4,27 @@ require_once 'auth_helper.php';
 
 // Authentifizierung erzwingen (Sitzung oder Remember-Me Cookie)
 if (!check_remember_me()) {
+    if ((!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || isset($_POST['ajax_upload'])) {
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'error', 'message' => 'Nicht angemeldet. Session abgelaufen.']);
+        exit;
+    }
     header('Location: login.php');
     exit;
 }
 
 try {
     $pdo = get_db_connection();
-    // Aktuellen Benutzerstatus prüfen (ob Konto aktiv ist)
     $stmt = $pdo->prepare("SELECT id, username, is_active, role FROM accounts WHERE id = :id");
     $stmt->execute(['id' => $_SESSION['user_id']]);
     $user = $stmt->fetch();
 
     if (!$user || !$user['is_active']) {
+        if (isset($_POST['ajax_upload'])) {
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'error', 'message' => 'Konto deaktiviert.']);
+            exit;
+        }
         header('Location: logout.php');
         exit;
     }
@@ -24,21 +33,85 @@ try {
     die("Systemfehler. Zugriff verweigert.");
 }
 
-// PHP Backend AJAX Endpoint Handling
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_contact'])) {
+// PHP Backend AJAX Endpoint für Foto-Upload
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_upload'])) {
     header('Content-Type: application/json');
-    $name = filter_input(INPUT_POST, 'name', FILTER_SANITIZE_SPECIAL_CHARS);
-    $email = filter_input(INPUT_POST, 'email', FILTER_VALIDATE_EMAIL);
-    $message = filter_input(INPUT_POST, 'message', FILTER_SANITIZE_SPECIAL_CHARS);
 
-    if (!$name || !$email || !$message) {
-        echo json_encode(['status' => 'error', 'message' => 'Bitte fülle alle Felder korrekt aus.']);
+    if (!isset($_FILES['photo']) || $_FILES['photo']['error'] !== UPLOAD_ERR_OK) {
+        $errorCode = $_FILES['photo']['error'] ?? 'missing';
+        $errorMsg = 'Keine Datei empfangen oder Fehler beim Upload (Code: ' . $errorCode . ').';
+        if ($errorCode === UPLOAD_ERR_INI_SIZE || $errorCode === UPLOAD_ERR_FORM_SIZE) {
+            $errorMsg = 'Die Datei ist zu groß für den Upload auf dem Server.';
+        }
+        echo json_encode(['status' => 'error', 'message' => $errorMsg]);
         exit;
     }
 
+    $fileTmpPath = $_FILES['photo']['tmp_name'];
+    $fileSize = $_FILES['photo']['size'];
+
+    // 1. Dateigröße prüfen (max. 10 MB)
+    $maxFileSize = 10 * 1024 * 1024;
+    if ($fileSize > $maxFileSize) {
+        echo json_encode(['status' => 'error', 'message' => 'Die Datei überschreitet das maximale Limit von 10 MB.']);
+        exit;
+    }
+
+    // 2. MIME-Type per finfo_file prüfen
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mimeType = finfo_file($finfo, $fileTmpPath);
+    finfo_close($finfo);
+
+    $allowedMimeTypes = [
+        'image/jpeg' => 'jpg',
+        'image/jpg'  => 'jpg',
+        'image/png'  => 'png',
+        'image/webp' => 'webp',
+        'image/gif'  => 'gif',
+        'image/heic' => 'heic',
+        'image/heif' => 'heif'
+    ];
+
+    if (!array_key_exists($mimeType, $allowedMimeTypes)) {
+        echo json_encode(['status' => 'error', 'message' => 'Ungültiges Dateiformat (' . htmlspecialchars($mimeType) . '). Nur Bilder (JPG, PNG, WEBP, GIF, HEIC) sind erlaubt.']);
+        exit;
+    }
+
+    $ext = $allowedMimeTypes[$mimeType];
+
+    // 3. Ziel-Ordner erstellen & sichern
+    $uploadDir = __DIR__ . '/uploads/photos/';
+    if (!is_dir($uploadDir)) {
+        if (!mkdir($uploadDir, 0755, true)) {
+            echo json_encode(['status' => 'error', 'message' => 'Server-Ordner konnte nicht angelegt werden.']);
+            exit;
+        }
+    }
+
+    // .htaccess Schutz im Upload-Ordner sicherstellen
+    $htaccessFile = $uploadDir . '.htaccess';
+    if (!file_exists($htaccessFile)) {
+        $htaccessContent = "<IfModule mod_php7.c>\n    php_flag engine off\n</IfModule>\n<IfModule mod_php.c>\n    php_flag engine off\n</IfModule>\nSetHandler default-handler\nRemoveHandler .php .phtml .php3 .php4 .php5 .php7 .phps .cgi .pl .py\n<FilesMatch \"\\.(?i:jpe?g|png|webp|gif|heic|heif)$\">\n    Require all granted\n</FilesMatch>\n<FilesMatch \"^(?!\\.(?i:jpe?g|png|webp|gif|heic|heif)$)\">\n    Require all denied\n</FilesMatch>\n";
+        @file_put_contents($htaccessFile, $htaccessContent);
+    }
+
+    // 4. Eindeutigen Dateinamen generieren (ohne Pfad-Traversal-Gefahr)
+    $newFileName = 'photo_u' . $user['id'] . '_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+    $targetPath = $uploadDir . $newFileName;
+
+    if (!move_uploaded_file($fileTmpPath, $targetPath)) {
+        echo json_encode(['status' => 'error', 'message' => 'Fehler beim Speichern der Datei auf dem Server.']);
+        exit;
+    }
+
+    $webPath = 'uploads/photos/' . $newFileName;
+
     echo json_encode([
         'status' => 'success',
-        'message' => 'Vielen Dank, ' . htmlspecialchars($name) . '! Deine Nachricht wurde erfolgreich übermittelt.'
+        'message' => 'Foto erfolgreich auf dem Server gespeichert! 📸',
+        'filename' => $newFileName,
+        'path' => $webPath,
+        'uploaded_at' => date('d.m.Y H:i:s')
     ]);
     exit;
 }
@@ -48,8 +121,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_contact'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>fressi — Deine kulinarische Inspiration & Rezept-Explorer</title>
-    <meta name="description" content="Fressi ist deine moderne Rezept-Plattform & Meal-Planner. Entdecke schnelle Gerichte, leckere Ideen und frische Inspiration für jeden Tag.">
+    <title>fressi — Kamera Foto Upload</title>
+    <meta name="description" content="Nimm ein Foto auf und speichere es direkt auf deinem Server.">
     <meta name="theme-color" content="#0b0f19">
 
     <!-- Favicon & Icons -->
@@ -69,16 +142,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_contact'])) {
     <header>
         <nav class="navbar glass-panel">
             <a href="#" class="brand-logo">
-                <div class="logo-icon">🍲</div>
+                <div class="logo-icon">📷</div>
                 <span>fressi</span>
             </a>
-            
-            <ul class="nav-links">
-                <li><a href="#hero" class="nav-link active">Home</a></li>
-                <li><a href="#recipes" class="nav-link">Rezepte</a></li>
-                <li><a href="#planner" class="nav-link">Essensplaner</a></li>
-                <li><a href="#contact" class="nav-link">Kontakt</a></li>
-            </ul>
 
             <div class="nav-actions">
                 <div class="user-badge" title="Eingeloggt als <?php echo htmlspecialchars($user['username']); ?>">
@@ -87,10 +153,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_contact'])) {
                 <a href="logout.php" class="chip-btn" title="Abmelden" style="background: rgba(247, 37, 133, 0.15); border-color: rgba(247, 37, 133, 0.3); color: #ff4d6d;">
                     Abmelden 🚪
                 </a>
-                <button id="fav-toggle-btn" class="fav-toggle-btn" title="Gespeicherte Favoriten">
-                    ❤️
-                    <span id="fav-count" class="fav-badge">0</span>
-                </button>
                 <button id="theme-toggle" class="theme-toggle" title="Design-Modus umschalten">
                     🌙
                 </button>
@@ -98,97 +160,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_contact'])) {
         </nav>
     </header>
 
-    <!-- Hero Section -->
-    <section id="hero" class="hero-section">
-        <div class="hero-glow"></div>
-        <div class="container">
-            <div class="hero-grid">
-                <div class="hero-text-content">
-                    <div class="hero-tag">
-                        ✨ Dein smarter Rezept-Guide
-                    </div>
-                    <h1 class="hero-title">
-                        Was essen wir <span class="gradient-text">heute?</span>
-                    </h1>
-                    <p class="hero-subtitle">
-                        Keine Lust auf stundenlanges Überlegen? Entdecke leckere Rezepte, erstelle deine Favoritenliste und lass dich vom interaktiven Essen-Generator inspirieren.
+    <!-- Main Content Container -->
+    <main class="container camera-main">
+        <section class="photo-capture-section">
+            <div class="hero-glow"></div>
+            
+            <div class="photo-card glass-panel">
+                <div class="card-header">
+                    <h1 class="card-title">Foto aufnehmen <span class="gradient-text">& speichern</span></h1>
+                    <p class="card-subtitle">
+                        Nimm ein neues Foto mit deiner Kamera auf oder wähle ein Bild aus – es wird sofort sicher auf deinem Server gespeichert.
                     </p>
                 </div>
 
-                <div class="hero-interactive-card glass-panel" id="planner">
-                    <div class="interactive-header">
-                        <h3 class="interactive-title">🎲 Was koche ich heute?</h3>
-                    </div>
-                    <p style="font-size: 0.9rem; color: var(--text-secondary);">
-                        Keine Idee? Klicke auf den Button und fressi wählt ein perfektes Gericht für dich aus!
-                    </p>
-
-                    <div id="randomizer-result" class="randomizer-result">
-                        <span style="color: var(--text-muted);">Bereit für die Inspiration?</span>
-                    </div>
-
-                    <button id="spin-btn" class="spin-wheel-btn">
-                        <span>Gericht mischen</span> 🚀
-                    </button>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Filter & Recipe Explorer Section -->
-    <main id="recipes" class="container">
-        <section class="filter-section">
-            <div class="filter-wrapper glass-panel">
-                <div class="search-box">
-                    <span class="search-icon">🔍</span>
-                    <input type="text" id="search-input" class="search-input" placeholder="Zutat oder Gericht suchen (z.B. Pasta, Lachs, Vegan)...">
-                </div>
-
-                <div class="category-chips">
-                    <button class="chip-btn active" data-category="all">Alle</button>
-                    <button class="chip-btn" data-category="quick">⚡ Schnell & Einfach</button>
-                    <button class="chip-btn" data-category="lowcarb">🥑 Low Carb</button>
-                    <button class="chip-btn" data-category="vegan">🌱 Vegan</button>
-                    <button class="chip-btn" data-category="comfort">🍝 Comfort Food</button>
-                </div>
-            </div>
-        </section>
-
-        <!-- Recipe Grid -->
-        <section class="recipe-grid" id="recipe-grid">
-            <!-- Dynamic Recipe Cards Rendered via JS -->
-        </section>
-
-        <!-- Contact Section -->
-        <section id="contact" class="contact-section">
-            <div class="contact-card glass-panel">
-                <div>
-                    <h2 style="font-size: 2rem; margin-bottom: 0.8rem;">Hast du Fragen oder Rezept-Ideen?</h2>
-                    <p style="color: var(--text-secondary);">
-                        Schreib uns direkt! Wir freuen uns über Feedback, Vorschläge oder neue Rezeptideen für fressi.
-                    </p>
-                </div>
-
-                <form id="contact-form">
-                    <div class="form-group">
-                        <label for="name" class="form-label">Dein Name</label>
-                        <input type="text" id="name" name="name" class="form-input" placeholder="Z. B. Alex" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="email" class="form-label">Deine E-Mail-Adresse</label>
-                        <input type="email" id="email" name="email" class="form-input" placeholder="alex@beispiel.de" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="message" class="form-label">Deine Nachricht</label>
-                        <textarea id="message" name="message" class="form-textarea" rows="4" placeholder="Deine Idee oder Frage..." required></textarea>
-                    </div>
-
-                    <button type="submit" class="btn-primary">
-                        Nachricht senden ✉️
-                    </button>
+                <!-- Hidden native camera input -->
+                <form id="photo-upload-form" enctype="multipart/form-data">
+                    <input type="file" id="photo-input" name="photo" accept="image/*" capture="environment" hidden>
                 </form>
+
+                <!-- Initial Upload Trigger Dropzone -->
+                <div id="dropzone" class="upload-dropzone">
+                    <div class="dropzone-icon">📸</div>
+                    <h3>Foto aufnehmen oder auswählen</h3>
+                    <p>Tippe hier, um die Kamera zu öffnen</p>
+                    <button type="button" id="trigger-btn" class="btn-primary camera-trigger-btn">
+                        Kamera öffnen 📷
+                    </button>
+                </div>
+
+                <!-- Preview Container (hidden by default) -->
+                <div id="preview-container" class="preview-container" style="display: none;">
+                    <div class="preview-wrapper">
+                        <img id="image-preview" src="" alt="Foto Vorschau" class="preview-img">
+                    </div>
+
+                    <div class="preview-meta">
+                        <span id="file-name-display" class="file-info-badge">photo.jpg</span>
+                        <span id="file-size-display" class="file-info-badge">0 MB</span>
+                    </div>
+
+                    <div class="preview-actions">
+                        <button type="button" id="upload-btn" class="btn-primary upload-submit-btn">
+                            <span>Auf Server speichern</span> 🚀
+                        </button>
+                        <button type="button" id="reset-btn" class="btn-secondary">
+                            Anderes Foto wählen 🔄
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Status Feedback Message -->
+                <div id="status-box" class="status-box" style="display: none;"></div>
             </div>
         </section>
     </main>
@@ -196,22 +218,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_contact'])) {
     <!-- Footer -->
     <footer class="footer">
         <div class="container">
-            <p>© <?php echo date('Y'); ?> fressi — Dein kulinarischer Begleiter. Erstellt mit ❤️ für deinen Server.</p>
+            <p>© <?php echo date('Y'); ?> fressi — Sichere Foto-Erfassung auf deinem Server.</p>
         </div>
     </footer>
-
-    <!-- Recipe Detail Modal -->
-    <div id="modal-overlay" class="modal-overlay" role="dialog" aria-modal="true">
-        <div class="modal-content glass-panel">
-            <button id="modal-close" class="modal-close" aria-label="Schließen">✕</button>
-            <div id="modal-body"></div>
-        </div>
-    </div>
 
     <!-- Toast Container -->
     <div id="toast-container" class="toast-container"></div>
 
-    <!-- JavaScript Bundle -->
+    <!-- JavaScript -->
     <script src="js/app.js"></script>
 </body>
 </html>
