@@ -794,11 +794,16 @@ button {
    Photo Capture Page Styles
    ========================================================================== */
 .camera-main {
-  min-height: calc(100vh - 160px);
+  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2.5rem 1rem;
+  padding-top: calc(80px + 2rem);
+  padding-bottom: 2rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  box-sizing: border-box;
 }
 
 .photo-capture-section {

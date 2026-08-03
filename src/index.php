@@ -108,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_upload'])) {
 
     echo json_encode([
         'status' => 'success',
-        'message' => 'Foto erfolgreich auf dem Server gespeichert! 📸',
+        'message' => 'Foto erfolgreich auf dem Server gespeichert!',
         'filename' => $newFileName,
         'path' => $webPath,
         'uploaded_at' => date('d.m.Y H:i:s')
@@ -160,16 +160,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_upload'])) {
         </nav>
     </header>
 
-    <!-- Main Content Container -->
-    <main class="container camera-main">
+    <!-- Main Content Container (Centered & Offset for Fixed Header) -->
+    <main class="camera-main">
         <section class="photo-capture-section">
             <div class="hero-glow"></div>
             
             <div class="photo-card glass-panel">
                 <div class="card-header">
-                    <h1 class="card-title">Foto aufnehmen <span class="gradient-text">& speichern</span></h1>
+                    <h1 class="card-title">Foto <span class="gradient-text">aufnehmen</span></h1>
                     <p class="card-subtitle">
-                        Nimm ein neues Foto mit deiner Kamera auf oder wähle ein Bild aus – es wird sofort sicher auf deinem Server gespeichert.
+                        Tippe auf den Button, um die Kamera zu öffnen. Das Foto wird direkt auf dem Server gespeichert.
                     </p>
                 </div>
 
@@ -178,35 +178,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_upload'])) {
                     <input type="file" id="photo-input" name="photo" accept="image/*" capture="environment" hidden>
                 </form>
 
-                <!-- Initial Upload Trigger Dropzone -->
+                <!-- Initial Upload Trigger Area -->
                 <div id="dropzone" class="upload-dropzone">
                     <div class="dropzone-icon">📸</div>
-                    <h3>Foto aufnehmen oder auswählen</h3>
-                    <p>Tippe hier, um die Kamera zu öffnen</p>
                     <button type="button" id="trigger-btn" class="btn-primary camera-trigger-btn">
-                        Kamera öffnen 📷
+                        Foto aufnehmen 📷
                     </button>
-                </div>
-
-                <!-- Preview Container (hidden by default) -->
-                <div id="preview-container" class="preview-container" style="display: none;">
-                    <div class="preview-wrapper">
-                        <img id="image-preview" src="" alt="Foto Vorschau" class="preview-img">
-                    </div>
-
-                    <div class="preview-meta">
-                        <span id="file-name-display" class="file-info-badge">photo.jpg</span>
-                        <span id="file-size-display" class="file-info-badge">0 MB</span>
-                    </div>
-
-                    <div class="preview-actions">
-                        <button type="button" id="upload-btn" class="btn-primary upload-submit-btn">
-                            <span>Auf Server speichern</span> 🚀
-                        </button>
-                        <button type="button" id="reset-btn" class="btn-secondary">
-                            Anderes Foto wählen 🔄
-                        </button>
-                    </div>
                 </div>
 
                 <!-- Status Feedback Message -->
@@ -214,13 +191,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ajax_upload'])) {
             </div>
         </section>
     </main>
-
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="container">
-            <p>© <?php echo date('Y'); ?> fressi — Sichere Foto-Erfassung auf deinem Server.</p>
-        </div>
-    </footer>
 
     <!-- Toast Container -->
     <div id="toast-container" class="toast-container"></div>
