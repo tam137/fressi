@@ -71,12 +71,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <link rel="stylesheet" href="css/style.css">
     <style>
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+
         .login-container {
-            min-height: 100vh;
+            height: 100vh;
+            height: 100dvh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 2rem 1rem;
+            padding: 1rem;
             position: relative;
             width: 100%;
             max-width: 100%;
@@ -85,18 +91,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         .login-card {
             width: 100%;
-            max-width: 440px;
-            padding: 2.8rem 2.2rem;
+            max-width: 420px;
+            padding: 2.2rem 1.8rem;
             position: relative;
             z-index: 10;
+            max-height: calc(100dvh - 2rem);
+            box-sizing: border-box;
         }
 
         @media (max-width: 480px) {
             .login-container {
-                padding: 1.5rem 0.75rem;
+                padding: 0.75rem;
             }
             .login-card {
-                padding: 2rem 1.25rem;
+                padding: 1.5rem 1.25rem;
+            }
+            .login-header {
+                margin-bottom: 1.2rem;
+            }
+            .login-logo {
+                margin-bottom: 0.5rem;
+            }
+            .login-logo .logo-icon {
+                width: 42px;
+                height: 42px;
+                font-size: 1.3rem;
+            }
+            .login-title {
+                font-size: 1.5rem;
+            }
+            .form-group {
+                margin-bottom: 0.85rem;
+            }
+            .form-options {
+                margin-bottom: 1.2rem;
+            }
+            .btn-login {
+                padding: 0.75rem 1.2rem;
+                font-size: 1rem;
             }
         }
 
