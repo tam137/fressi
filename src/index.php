@@ -71,7 +71,9 @@ function analyze_image_with_gemini($filePath, $mimeType) {
         ];
     }
 
-    $base64Image = base64_encode($imageData);
+    $promptsFile = __DIR__ . '/prompts.php';
+    $prompts = file_exists($promptsFile) ? require $promptsFile : [];
+    $promptText = $prompts['image_analysis'] ?? 'Beschreibe in 1-2 kurzen Sätzen prägnant auf Deutsch, was auf diesem Bild zu sehen ist.';
 
     // Modelle versuchen: gemini-3.6-flash (Standard), gefolgt von weiteren aktuellen Flash-Modellen
     $models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
@@ -85,7 +87,7 @@ function analyze_image_with_gemini($filePath, $mimeType) {
                 [
                     'parts' => [
                         [
-                            'text' => 'Beschreibe in 1-2 kurzen Sätzen prägnant auf Deutsch, was auf diesem Bild zu sehen ist.'
+                            'text' => $promptText
                         ],
                         [
                             'inline_data' => [
