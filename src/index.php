@@ -36,6 +36,53 @@ try {
         exit;
     }
     die("Systemfehler. Zugriff verweigert.");
+}/**
+ * Normalisiert ein Bild für die Gemini API (konvertiert HEIC, PNG, WEBP, GIF bei Bedarf in JPEG).
+ * 
+ * @param string $filePath Pfad zur Bilddatei
+ * @param string $mimeType MIME-Typ des Bildes
+ * @return array ['path' => string, 'mime' => string, 'is_temp' => bool]
+ */
+function normalize_image_for_gemini($filePath, $mimeType) {
+    $mimeLower = strtolower($mimeType);
+    $isHeic = ($mimeLower === 'image/heic' || $mimeLower === 'image/heif');
+
+    // HEIC/HEIF oder andere Formate bei Bedarf in sauberes JPEG konvertieren
+    if ($isHeic || in_array($mimeLower, ['image/png', 'image/webp', 'image/gif'])) {
+        $tempJpeg = $filePath . '_gemini_norm.jpg';
+
+        // 1. Versuchen per Imagick (beste HEIC & Bild-Unterstützung)
+        if (class_exists('Imagick')) {
+            try {
+                $imagick = new Imagick($filePath);
+                $imagick->setImageFormat('jpeg');
+                $imagick->setImageCompressionQuality(85);
+                $imagick->writeImage($tempJpeg);
+                $imagick->clear();
+                $imagick->destroy();
+                return ['path' => $tempJpeg, 'mime' => 'image/jpeg', 'is_temp' => true];
+            } catch (Exception $e) {
+                // Fallback auf GD
+            }
+        }
+
+        // 2. Versuchen per GD Library
+        if (function_exists('imagecreatefromstring')) {
+            $raw = @file_get_contents($filePath);
+            if ($raw !== false) {
+                $img = @imagecreatefromstring($raw);
+                if ($img !== false) {
+                    if (@imagejpeg($img, $tempJpeg, 85)) {
+                        imagedestroy($img);
+                        return ['path' => $tempJpeg, 'mime' => 'image/jpeg', 'is_temp' => true];
+                    }
+                    imagedestroy($img);
+                }
+            }
+        }
+    }
+
+    return ['path' => $filePath, 'mime' => $mimeType, 'is_temp' => false];
 }
 
 /**
@@ -63,17 +110,34 @@ function analyze_image_with_gemini($filePath, $mimeType) {
         ];
     }
 
-    $imageData = file_get_contents($filePath);
+    // Bild für Gemini-Kompatibilität normalisieren (z. B. HEIC/PNG -> JPEG)
+    $normalized = normalize_image_for_gemini($filePath, $mimeType);
+    $activePath = $normalized['path'];
+    $activeMime = $normalized['mime'];
+    $isTempFile = $normalized['is_temp'];
+
+    $imageData = file_get_contents($activePath);
     if ($imageData === false) {
+        if ($isTempFile && file_exists($activePath)) { @unlink($activePath); }
         return [
             'success' => false,
             'error' => 'Bilddatei konnte nicht gelesen werden.'
         ];
     }
 
+    $base64Image = base64_encode($imageData);
+
     $promptsFile = __DIR__ . '/prompts.php';
     $prompts = file_exists($promptsFile) ? require $promptsFile : [];
-    $promptText = $prompts['image_analysis'] ?? 'Beschreibe in 1-2 kurzen Sätzen prägnant auf Deutsch, was auf diesem Bild zu sehen ist.';
+    $promptText = $prompts['image_analysis'] ?? null;
+
+    if (empty($promptText)) {
+        if ($isTempFile && file_exists($activePath)) { @unlink($activePath); }
+        return [
+            'success' => false,
+            'error' => 'KI-Prompt konnte nicht geladen werden (src/prompts.php fehlt oder unvollständig).'
+        ];
+    }
 
     // Modelle versuchen: gemini-3.6-flash (Standard), gefolgt von weiteren aktuellen Flash-Modellen
     $models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
@@ -91,7 +155,7 @@ function analyze_image_with_gemini($filePath, $mimeType) {
                         ],
                         [
                             'inline_data' => [
-                                'mime_type' => $mimeType,
+                                'mime_type' => $activeMime,
                                 'data' => $base64Image
                             ]
                         ]
@@ -137,6 +201,7 @@ function analyze_image_with_gemini($filePath, $mimeType) {
         $description = $responseData['candidates'][0]['content']['parts'][0]['text'] ?? null;
 
         if (!empty($description)) {
+            if ($isTempFile && file_exists($activePath)) { @unlink($activePath); }
             return [
                 'success' => true,
                 'text' => trim($description)
@@ -145,6 +210,8 @@ function analyze_image_with_gemini($filePath, $mimeType) {
             $lastError = 'Keine gültige Text-Antwort von Gemini erhalten.';
         }
     }
+
+    if ($isTempFile && file_exists($activePath)) { @unlink($activePath); }
 
     return [
         'success' => false,
