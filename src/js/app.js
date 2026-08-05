@@ -112,12 +112,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (response.ok && result.status === 'success') {
-        let statusHtml = `<strong>✅ ${result.message}</strong><br><small style="opacity: 0.85; margin-top: 4px; display: inline-block;">Datei: <code>${result.filename}</code> (${result.uploaded_at})</small>`;
+        let statusHtml = `<strong>✅ ${result.message}</strong>`;
         if (result.ai_description) {
           statusHtml += `<div class="ai-description">🤖 <strong>KI-Ernährungsratgeber:</strong><br><br>${formatAiDescription(result.ai_description)}</div>`;
         }
         showStatus(statusHtml, 'success');
-        showToast('Foto erfolgreich gespeichert & analysiert! 🎉');
+        showToast('Foto erfolgreich analysiert! 🎉');
       } else {
         const errMsg = result.message || 'Unbekannter Fehler.';
         showStatus(`<strong>❌ Upload abgelehnt:</strong> ${escapeHtml(errMsg)}`, 'error');

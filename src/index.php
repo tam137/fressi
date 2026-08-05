@@ -318,7 +318,7 @@ if ($isAjaxRequest) {
 
     echo json_encode([
         'status' => 'success',
-        'message' => 'Foto erfolgreich gespeichert!',
+        'message' => 'Foto erfolgreich analysiert!',
         'filename' => $newFileName,
         'path' => $webPath,
         'uploaded_at' => date('d.m.Y H:i:s'),
