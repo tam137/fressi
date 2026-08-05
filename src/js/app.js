@@ -114,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (response.ok && result.status === 'success') {
         let statusHtml = `<strong>✅ ${result.message}</strong><br><small style="opacity: 0.85; margin-top: 4px; display: inline-block;">Datei: <code>${result.filename}</code> (${result.uploaded_at})</small>`;
         if (result.ai_description) {
-          statusHtml += `<div class="ai-description" style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.15); text-align: left;">🤖 <strong>KI-Erkenntnis:</strong> ${escapeHtml(result.ai_description)}</div>`;
+          statusHtml += `<div class="ai-description">🤖 <strong>KI-Ernährungsratgeber:</strong><br><br>${formatAiDescription(result.ai_description)}</div>`;
         }
         showStatus(statusHtml, 'success');
         showToast('Foto erfolgreich gespeichert & analysiert! 🎉');
@@ -151,6 +151,12 @@ document.addEventListener('DOMContentLoaded', () => {
         "'": '&#039;'
       }[m];
     });
+  }
+
+  function formatAiDescription(str) {
+    if (!str) return '';
+    let safe = escapeHtml(str);
+    return safe.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   }
 
   // Helper Functions
