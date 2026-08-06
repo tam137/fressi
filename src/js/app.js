@@ -56,17 +56,17 @@ document.addEventListener('DOMContentLoaded', () => {
     notes: ''
   };
 
-  let isModified = false;
+  let needsAiReanalysis = false;
 
-  function markAsModified() {
-    isModified = true;
+  function markNeedsAiReanalysis() {
+    needsAiReanalysis = true;
     if (btnSave && !btnSave.disabled) {
       btnSave.innerHTML = `Neu analysieren 🔄`;
     }
   }
 
-  function resetModifiedState() {
-    isModified = false;
+  function resetAiReanalysisState() {
+    needsAiReanalysis = false;
     if (btnSave && !btnSave.disabled) {
       btnSave.innerHTML = `Speichern 💾`;
     }
@@ -219,7 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderIngredientsChips();
 
     // Reset modification state
-    resetModifiedState();
+    resetAiReanalysisState();
 
     // Toggle card views
     if (photoCard) photoCard.style.display = 'none';
@@ -240,7 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
       input.className = 'ingredient-chip-input';
       input.value = ing;
       input.addEventListener('input', () => {
-        markAsModified();
+        markNeedsAiReanalysis();
       });
       input.addEventListener('change', (e) => {
         const newVal = e.target.value.trim();
@@ -250,7 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
           currentAnalysis.ingredients.splice(index, 1);
           renderIngredientsChips();
         }
-        markAsModified();
+        markNeedsAiReanalysis();
       });
 
       const removeBtn = document.createElement('span');
@@ -260,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
       removeBtn.addEventListener('click', () => {
         currentAnalysis.ingredients.splice(index, 1);
         renderIngredientsChips();
-        markAsModified();
+        markNeedsAiReanalysis();
       });
 
       chip.appendChild(input);
@@ -277,7 +277,7 @@ document.addEventListener('DOMContentLoaded', () => {
       currentAnalysis.ingredients.push(val);
       addIngredientInput.value = '';
       renderIngredientsChips();
-      markAsModified();
+      markNeedsAiReanalysis();
     }
   }
 
@@ -293,17 +293,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Input Change Listeners -> Mark as modified
-  if (fieldDatetime) {
-    fieldDatetime.addEventListener('input', markAsModified);
-    fieldDatetime.addEventListener('change', markAsModified);
-  }
-
+  // Notes changes trigger AI re-analysis
   if (fieldNotes) {
-    fieldNotes.addEventListener('input', markAsModified);
+    fieldNotes.addEventListener('input', markNeedsAiReanalysis);
   }
 
-  // Dynamic Portion % & Calorie Recalculation
+  // Dynamic Portion % & Calorie Recalculation (does NOT trigger AI re-analysis)
   if (fieldPortion) {
     fieldPortion.addEventListener('change', () => {
       const portion = parseInt(fieldPortion.value, 10) || 100;
@@ -314,25 +309,19 @@ document.addEventListener('DOMContentLoaded', () => {
         currentAnalysis.currentCalories = newCalories;
         if (fieldCalories) fieldCalories.value = newCalories;
       }
-      markAsModified();
     });
   }
 
   if (fieldCalories) {
-    fieldCalories.addEventListener('input', markAsModified);
     fieldCalories.addEventListener('change', () => {
       const val = parseInt(fieldCalories.value, 10) || 0;
       currentAnalysis.currentCalories = val;
-      markAsModified();
     });
   }
 
-  // Refinement Loop (Speichern / Neu analysieren Button Click)
+  // Refinement Loop / Save Handler
   if (btnSave) {
     btnSave.addEventListener('click', async () => {
-      btnSave.disabled = true;
-      btnSave.innerHTML = `Analysiere... ⏳`;
-
       // Read latest user values from input elements
       const latestIngredients = Array.from(document.querySelectorAll('.ingredient-chip-input'))
         .map(el => el.value.trim())
@@ -342,6 +331,16 @@ document.addEventListener('DOMContentLoaded', () => {
       currentAnalysis.notes = fieldNotes ? fieldNotes.value.trim() : '';
       currentAnalysis.portion = parseInt(fieldPortion ? fieldPortion.value : 100, 10) || 100;
       currentAnalysis.currentCalories = parseInt(fieldCalories ? fieldCalories.value : 0, 10) || 0;
+
+      // If only portion or calories were modified, skip AI re-analysis and perform dummy save
+      if (!needsAiReanalysis) {
+        resetAiReanalysisState();
+        showToast('Angaben gespeichert (Dummy)! 💾');
+        return;
+      }
+
+      btnSave.disabled = true;
+      btnSave.innerHTML = `Analysiere... ⏳`;
 
       const formData = new FormData();
       formData.append('action', 'refine_summary');
@@ -390,7 +389,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (fieldCalories) fieldCalories.value = currentAnalysis.currentCalories;
           }
 
-          resetModifiedState();
+          resetAiReanalysisState();
           showToast('Angaben gespeichert (Dummy) & Wertigkeit von KI aktualisiert! 🎉');
         } else {
           showToast(`Fehler bei der Aktualisierung: ${result.message || 'Unbekannt'} ⚠️`);
@@ -400,7 +399,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Verbindungsfehler beim Refinement-Loop! ❌');
       } finally {
         btnSave.disabled = false;
-        if (isModified) {
+        if (needsAiReanalysis) {
           btnSave.innerHTML = `Neu analysieren 🔄`;
         } else {
           btnSave.innerHTML = `Speichern 💾`;
@@ -424,7 +423,7 @@ document.addEventListener('DOMContentLoaded', () => {
         notes: ''
       };
 
-      resetModifiedState();
+      resetAiReanalysisState();
       if (validationCard) validationCard.style.display = 'none';
       if (photoCard) photoCard.style.display = 'block';
       hideStatus();
