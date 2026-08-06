@@ -54,6 +54,22 @@ document.addEventListener('DOMContentLoaded', () => {
     notes: ''
   };
 
+  let isModified = false;
+
+  function markAsModified() {
+    isModified = true;
+    if (btnSave && !btnSave.disabled) {
+      btnSave.innerHTML = `Neu analysieren 🔄`;
+    }
+  }
+
+  function resetModifiedState() {
+    isModified = false;
+    if (btnSave && !btnSave.disabled) {
+      btnSave.innerHTML = `Speichern 💾`;
+    }
+  }
+
   // Helper: Get formatted ISO string for datetime-local rounded to 15 mins
   function getFormatted15MinDateTime() {
     const now = new Date();
@@ -198,6 +214,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Render ingredients chips
     renderIngredientsChips();
 
+    // Reset modification state
+    resetModifiedState();
+
     // Toggle card views
     if (photoCard) photoCard.style.display = 'none';
     if (validationCard) validationCard.style.display = 'block';
@@ -216,6 +235,9 @@ document.addEventListener('DOMContentLoaded', () => {
       input.type = 'text';
       input.className = 'ingredient-chip-input';
       input.value = ing;
+      input.addEventListener('input', () => {
+        markAsModified();
+      });
       input.addEventListener('change', (e) => {
         const newVal = e.target.value.trim();
         if (newVal) {
@@ -224,6 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
           currentAnalysis.ingredients.splice(index, 1);
           renderIngredientsChips();
         }
+        markAsModified();
       });
 
       const removeBtn = document.createElement('span');
@@ -233,6 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
       removeBtn.addEventListener('click', () => {
         currentAnalysis.ingredients.splice(index, 1);
         renderIngredientsChips();
+        markAsModified();
       });
 
       chip.appendChild(input);
@@ -249,6 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
       currentAnalysis.ingredients.push(val);
       addIngredientInput.value = '';
       renderIngredientsChips();
+      markAsModified();
     }
   }
 
@@ -264,6 +289,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Input Change Listeners -> Mark as modified
+  if (fieldDatetime) {
+    fieldDatetime.addEventListener('input', markAsModified);
+    fieldDatetime.addEventListener('change', markAsModified);
+  }
+
+  if (fieldNotes) {
+    fieldNotes.addEventListener('input', markAsModified);
+  }
+
   // Dynamic Portion % & Calorie Recalculation
   if (fieldPortion) {
     fieldPortion.addEventListener('change', () => {
@@ -275,21 +310,24 @@ document.addEventListener('DOMContentLoaded', () => {
         currentAnalysis.currentCalories = newCalories;
         if (fieldCalories) fieldCalories.value = newCalories;
       }
+      markAsModified();
     });
   }
 
   if (fieldCalories) {
+    fieldCalories.addEventListener('input', markAsModified);
     fieldCalories.addEventListener('change', () => {
       const val = parseInt(fieldCalories.value, 10) || 0;
       currentAnalysis.currentCalories = val;
+      markAsModified();
     });
   }
 
-  // Refinement Loop (Speichern Button Click)
+  // Refinement Loop (Speichern / Neu analysieren Button Click)
   if (btnSave) {
     btnSave.addEventListener('click', async () => {
       btnSave.disabled = true;
-      btnSave.innerHTML = `Analysiere & Aktualisiere... ⏳`;
+      btnSave.innerHTML = `Analysiere mit Websuche... ⏳`;
 
       // Read latest user values from input elements
       const latestIngredients = Array.from(document.querySelectorAll('.ingredient-chip-input'))
@@ -342,6 +380,13 @@ document.addEventListener('DOMContentLoaded', () => {
             renderIngredientsChips();
           }
 
+          if (typeof data.calories !== 'undefined' && parseInt(data.calories, 10) > 0) {
+            currentAnalysis.baseCalories = parseInt(data.calories, 10);
+            currentAnalysis.currentCalories = currentAnalysis.baseCalories;
+            if (fieldCalories) fieldCalories.value = currentAnalysis.currentCalories;
+          }
+
+          resetModifiedState();
           showToast('Angaben gespeichert (Dummy) & Wertigkeit von KI aktualisiert! 🎉');
         } else {
           showToast(`Fehler bei der Aktualisierung: ${result.message || 'Unbekannt'} ⚠️`);
@@ -351,7 +396,11 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Verbindungsfehler beim Refinement-Loop! ❌');
       } finally {
         btnSave.disabled = false;
-        btnSave.innerHTML = `Speichern 💾`;
+        if (isModified) {
+          btnSave.innerHTML = `Neu analysieren 🔄`;
+        } else {
+          btnSave.innerHTML = `Speichern 💾`;
+        }
       }
     });
   }
@@ -371,6 +420,7 @@ document.addEventListener('DOMContentLoaded', () => {
         notes: ''
       };
 
+      resetModifiedState();
       if (validationCard) validationCard.style.display = 'none';
       if (photoCard) photoCard.style.display = 'block';
       hideStatus();

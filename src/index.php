@@ -147,6 +147,9 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
                     ]
                 ]
             ],
+            'tools' => [
+                ['googleSearch' => (object)[]]
+            ],
             'generationConfig' => [
                 'response_mime_type' => 'application/json'
             ]
@@ -521,13 +524,7 @@ if ($isAjaxRequest) {
                                 <option value="70">70 %</option>
                                 <option value="80">80 %</option>
                                 <option value="90">90 %</option>
-                                <option value="100" selected>100 % (Standard)</option>
-                                <option value="110">110 %</option>
-                                <option value="120">120 %</option>
-                                <option value="130">130 %</option>
-                                <option value="140">140 %</option>
-                                <option value="150">150 %</option>
-                                <option value="200">200 %</option>
+                                <option value="100" selected>100 % (Gesamt)</option>
                             </select>
                         </div>
                         <div class="form-group col-half">

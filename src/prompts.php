@@ -33,9 +33,10 @@ Gib folgendes JSON-Objekt zurück:
 }
 
 Hinweise:
+- Nutze bei Bedarf die Websuche / Nährwert-Datenbanken, um die Kalorienangaben für die erkannten Lebensmittel, Portionsgrößen oder Markenprodukte möglichst exakt und präzise festzustellen.
 - `ingredients`: Eine Liste aller einzeln erkannten Zutaten und Bestandteile (kurze prägnante Begriffe).
 - `health_rating`: Prägnante, verständliche Erläuterung auf Deutsch in der Du-Form, optimiert für Smartphones.
-- `calories`: Eine geschätzte Zahl der Gesamtkalorien (nur als reine Ganzzahl, z. B. 450).
+- `calories`: Eine präzise geschätzte Zahl der Gesamtkalorien (nur als reine Ganzzahl, z. B. 450).
 PROMPT,
 
     'refine_analysis' => <<<PROMPT
@@ -50,7 +51,7 @@ Hier sind die Angaben:
 - Aktualisierte Zutatenliste vom Nutzer: {USER_INGREDIENTS}
 - Freitext-Anmerkungen / Fehlende Zutaten vom Nutzer: {USER_NOTES}
 - Gewählte Verzehrmenge: {USER_PORTION}%
-- Gesamtkalorien: {USER_CALORIES} kcal
+- Vom Nutzer eingegebene Kalorien: {USER_CALORIES} kcal
 
 Erstelle nun ein aktualisiertes JSON-Objekt:
 {
@@ -63,7 +64,9 @@ Erstelle nun ein aktualisiertes JSON-Objekt:
   "calories": {USER_CALORIES}
 }
 
+Hinweis: Nutze bei Bedarf die Websuche, um die genauen Kalorien und ernährungsphysiologischen Eigenschaften der vom Nutzer korrigierten oder ergänzten Zutaten exakt zu überprüfen.
 Halte die Sprache prägnant, verständlich und auf Deutsch in der Du-Form.
 PROMPT
 ];
+
 
