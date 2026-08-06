@@ -22,8 +22,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Element References
   const photoCard = document.getElementById('photo-card');
   const validationCard = document.getElementById('validation-card');
-  const photoInput = document.getElementById('photo-input');
-  const triggerBtn = document.getElementById('trigger-btn');
+  const photoInputCamera = document.getElementById('photo-input-camera');
+  const photoInputGallery = document.getElementById('photo-input-gallery');
+  const triggerCameraBtn = document.getElementById('trigger-camera-btn');
+  const triggerGalleryBtn = document.getElementById('trigger-gallery-btn');
   const dropzone = document.getElementById('dropzone');
   const statusBox = document.getElementById('status-box');
   const toastContainer = document.getElementById('toast-container');
@@ -86,27 +88,27 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${year}-${month}-${day}T${hours}:${mins}`;
   }
 
-  // Camera & Photo Upload Handling
+  // Camera & Photo Gallery Upload Handling
   function openCamera() {
     hideStatus();
-    if (photoInput) {
-      photoInput.click();
-    }
+    if (photoInputCamera) photoInputCamera.click();
   }
 
-  if (triggerBtn) {
-    triggerBtn.addEventListener('click', openCamera);
-  }
-  if (dropzone) {
-    dropzone.addEventListener('click', (e) => {
-      if (!triggerBtn || (e.target !== triggerBtn && !triggerBtn.contains(e.target))) {
-        openCamera();
-      }
-    });
+  function openGallery() {
+    hideStatus();
+    if (photoInputGallery) photoInputGallery.click();
   }
 
-  if (photoInput) {
-    photoInput.addEventListener('change', async (e) => {
+  if (triggerCameraBtn) {
+    triggerCameraBtn.addEventListener('click', openCamera);
+  }
+  if (triggerGalleryBtn) {
+    triggerGalleryBtn.addEventListener('click', openGallery);
+  }
+
+  function handleFileSelection(inputEl) {
+    if (!inputEl) return;
+    inputEl.addEventListener('change', async (e) => {
       const files = e.target.files;
       if (!files || files.length === 0) return;
 
@@ -115,14 +117,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!file.type.startsWith('image/')) {
         showStatus('Bitte wähle eine gültige Bilddatei (z. B. JPG, PNG, WEBP) aus.', 'error');
         showToast('Ungültiges Dateiformat! ⚠️');
-        photoInput.value = '';
+        inputEl.value = '';
         return;
       }
 
       if (file.size > 10 * 1024 * 1024) {
         showStatus('Das ausgewählte Bild ist zu groß (max. 10 MB erlaubt).', 'error');
         showToast('Bild ist zu groß! ⚠️');
-        photoInput.value = '';
+        inputEl.value = '';
         return;
       }
 
@@ -130,11 +132,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  handleFileSelection(photoInputCamera);
+  handleFileSelection(photoInputGallery);
+
   async function uploadPhoto(file) {
     showStatus('Foto wird hochgeladen & von KI analysiert... ⏳', 'info');
-    if (triggerBtn) {
-      triggerBtn.disabled = true;
-      triggerBtn.innerHTML = `<span>Wird analysiert...</span> ⏳`;
+    if (triggerCameraBtn) {
+      triggerCameraBtn.disabled = true;
+      triggerCameraBtn.innerHTML = `<span>Wird analysiert...</span> ⏳`;
+    }
+    if (triggerGalleryBtn) {
+      triggerGalleryBtn.disabled = true;
+      triggerGalleryBtn.innerHTML = `<span>Wird analysiert...</span> ⏳`;
     }
 
     const formData = new FormData();
@@ -187,10 +196,15 @@ document.addEventListener('DOMContentLoaded', () => {
       showStatus(`<strong>❌ Fehler:</strong> ${displayMsg}`, 'error');
       showToast('Verbindungsfehler! ❌');
     } finally {
-      if (photoInput) photoInput.value = '';
-      if (triggerBtn) {
-        triggerBtn.disabled = false;
-        triggerBtn.innerHTML = `Foto aufnehmen 📷`;
+      if (photoInputCamera) photoInputCamera.value = '';
+      if (photoInputGallery) photoInputGallery.value = '';
+      if (triggerCameraBtn) {
+        triggerCameraBtn.disabled = false;
+        triggerCameraBtn.innerHTML = `Foto aufnehmen 📷`;
+      }
+      if (triggerGalleryBtn) {
+        triggerGalleryBtn.disabled = false;
+        triggerGalleryBtn.innerHTML = `Aus Galerie wählen 🖼️`;
       }
     }
   }

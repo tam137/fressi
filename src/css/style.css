@@ -391,6 +391,15 @@ button {
   fill: currentColor;
 }
 
+.dropzone-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  width: 100%;
+}
+
 .btn-primary {
   padding: 0.85rem 2rem;
   border-radius: var(--radius-full);

@@ -456,17 +456,23 @@ if ($isAjaxRequest) {
                     </p>
                 </div>
 
-                <!-- Hidden native camera input -->
+                <!-- Hidden native camera and gallery inputs -->
                 <form id="photo-upload-form" enctype="multipart/form-data">
-                    <input type="file" id="photo-input" name="photo" accept="image/*" capture="environment" hidden>
+                    <input type="file" id="photo-input-camera" name="photo" accept="image/*" capture="environment" hidden>
+                    <input type="file" id="photo-input-gallery" name="photo" accept="image/*" hidden>
                 </form>
 
                 <!-- Initial Upload Trigger Area -->
                 <div id="dropzone" class="upload-dropzone">
                     <div class="dropzone-icon">📸</div>
-                    <button type="button" id="trigger-btn" class="btn-primary camera-trigger-btn">
-                        Foto aufnehmen 📷
-                    </button>
+                    <div class="dropzone-buttons">
+                        <button type="button" id="trigger-camera-btn" class="btn-primary camera-trigger-btn">
+                            Foto aufnehmen 📷
+                        </button>
+                        <button type="button" id="trigger-gallery-btn" class="btn-secondary gallery-trigger-btn">
+                            Aus Galerie wählen 🖼️
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Status Feedback Message -->
