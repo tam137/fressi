@@ -36,7 +36,9 @@ try {
         exit;
     }
     die("Systemfehler. Zugriff verweigert.");
-}/**
+}
+
+/**
  * Normalisiert ein Bild für die Gemini API (konvertiert HEIC, PNG, WEBP, GIF bei Bedarf in JPEG).
  * 
  * @param string $filePath Pfad zur Bilddatei
@@ -47,11 +49,9 @@ function normalize_image_for_gemini($filePath, $mimeType) {
     $mimeLower = strtolower($mimeType);
     $isHeic = ($mimeLower === 'image/heic' || $mimeLower === 'image/heif');
 
-    // HEIC/HEIF oder andere Formate bei Bedarf in sauberes JPEG konvertieren
     if ($isHeic || in_array($mimeLower, ['image/png', 'image/webp', 'image/gif'])) {
         $tempJpeg = $filePath . '_gemini_norm.jpg';
 
-        // 1. Versuchen per Imagick (beste HEIC & Bild-Unterstützung)
         if (class_exists('Imagick')) {
             try {
                 $imagick = new Imagick($filePath);
@@ -62,11 +62,9 @@ function normalize_image_for_gemini($filePath, $mimeType) {
                 $imagick->destroy();
                 return ['path' => $tempJpeg, 'mime' => 'image/jpeg', 'is_temp' => true];
             } catch (Exception $e) {
-                // Fallback auf GD
             }
         }
 
-        // 2. Versuchen per GD Library
         if (function_exists('imagecreatefromstring')) {
             $raw = @file_get_contents($filePath);
             if ($raw !== false) {
@@ -110,7 +108,6 @@ function analyze_image_with_gemini($filePath, $mimeType) {
         ];
     }
 
-    // Bild für Gemini-Kompatibilität normalisieren (z. B. HEIC/PNG -> JPEG)
     $normalized = normalize_image_for_gemini($filePath, $mimeType);
     $activePath = $normalized['path'];
     $activeMime = $normalized['mime'];
@@ -139,7 +136,6 @@ function analyze_image_with_gemini($filePath, $mimeType) {
         ];
     }
 
-    // Modelle versuchen: gemini-3.6-flash (Standard), gefolgt von weiteren aktuellen Flash-Modellen
     $models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
     $lastError = 'Unbekannter Fehler';
 
@@ -191,7 +187,6 @@ function analyze_image_with_gemini($filePath, $mimeType) {
             $msg = $errorData['error']['message'] ?? ('HTTP Status ' . $httpCode);
             $lastError = 'Gemini API Fehler (' . $model . '): ' . $msg;
             if ($httpCode === 404) {
-                // Bei 404 nächstes Modell versuchen
                 continue;
             }
             break;
@@ -219,7 +214,6 @@ function analyze_image_with_gemini($filePath, $mimeType) {
     ];
 }
 
-// PHP Backend AJAX Endpoint für Foto-Upload
 $isAjaxRequest = ($_SERVER['REQUEST_METHOD'] === 'POST') && (
     isset($_POST['ajax_upload']) ||
     (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
@@ -228,7 +222,6 @@ $isAjaxRequest = ($_SERVER['REQUEST_METHOD'] === 'POST') && (
 if ($isAjaxRequest) {
     header('Content-Type: application/json');
 
-    // Abfangen von post_max_size Overflow (falls $_POST & $_FILES durch PHP gelöscht wurden)
     if (empty($_POST) && empty($_FILES) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
         echo json_encode(['status' => 'error', 'message' => 'Die hochgeladene Datei überschreitet die maximale Server-Uploadgröße (post_max_size).']);
         exit;
@@ -247,14 +240,12 @@ if ($isAjaxRequest) {
     $fileTmpPath = $_FILES['photo']['tmp_name'];
     $fileSize = $_FILES['photo']['size'];
 
-    // 1. Dateigröße prüfen (max. 10 MB)
     $maxFileSize = 10 * 1024 * 1024;
     if ($fileSize > $maxFileSize) {
         echo json_encode(['status' => 'error', 'message' => 'Die Datei überschreitet das maximale Limit von 10 MB.']);
         exit;
     }
 
-    // 2. MIME-Type per finfo_file prüfen
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
     $mimeType = finfo_file($finfo, $fileTmpPath);
     finfo_close($finfo);
@@ -276,7 +267,6 @@ if ($isAjaxRequest) {
 
     $ext = $allowedMimeTypes[$mimeType];
 
-    // 3. Ziel-Ordner erstellen & sichern
     $uploadDir = __DIR__ . '/uploads/photos/';
     if (!is_dir($uploadDir)) {
         if (!mkdir($uploadDir, 0755, true)) {
@@ -285,14 +275,12 @@ if ($isAjaxRequest) {
         }
     }
 
-    // .htaccess Schutz im Upload-Ordner sicherstellen
     $htaccessFile = $uploadDir . '.htaccess';
     if (!file_exists($htaccessFile)) {
         $htaccessContent = "<IfModule mod_php7.c>\n    php_flag engine off\n</IfModule>\n<IfModule mod_php.c>\n    php_flag engine off\n</IfModule>\nSetHandler default-handler\nRemoveHandler .php .phtml .php3 .php4 .php5 .php7 .phps .cgi .pl .py\n<FilesMatch \"\\.(?i:jpe?g|png|webp|gif|heic|heif)$\">\n    Require all granted\n</FilesMatch>\n<FilesMatch \"^(?!\\.(?i:jpe?g|png|webp|gif|heic|heif)$)\">\n    Require all denied\n</FilesMatch>\n";
         @file_put_contents($htaccessFile, $htaccessContent);
     }
 
-    // 4. Eindeutigen Dateinamen generieren (ohne Pfad-Traversal-Gefahr)
     $newFileName = 'photo_u' . $user['id'] . '_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
     $targetPath = $uploadDir . $newFileName;
 
@@ -301,11 +289,9 @@ if ($isAjaxRequest) {
         exit;
     }
 
-    // 5. Bildanalyse mittels Gemini API durchführen
     $aiResult = analyze_image_with_gemini($targetPath, $mimeType);
 
     if (!$aiResult['success']) {
-        // Upload ablehnen und hochgeladene Datei löschen
         @unlink($targetPath);
         echo json_encode([
             'status' => 'error',
@@ -328,13 +314,13 @@ if ($isAjaxRequest) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="de" data-theme="dark">
+<html lang="de" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>fressi — Kamera Foto Upload</title>
     <meta name="description" content="Nimm ein Foto auf und speichere es direkt auf deinem Server.">
-    <meta name="theme-color" content="#0b0f19">
+    <meta name="theme-color" content="#f9f6f0">
 
     <!-- Favicon & Icons -->
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -351,7 +337,7 @@ if ($isAjaxRequest) {
 
     <!-- Navigation Header -->
     <header>
-        <nav class="navbar glass-panel">
+        <nav class="navbar">
             <a href="#" class="brand-logo">
                 <div class="logo-icon">📷</div>
                 <span>fressi</span>
@@ -361,8 +347,8 @@ if ($isAjaxRequest) {
                 <div class="user-badge" title="Eingeloggt als <?php echo htmlspecialchars($user['username']); ?>">
                     <span>Hallo, <strong><?php echo htmlspecialchars(ucfirst($user['username'])); ?></strong></span>
                 </div>
-                <a href="logout.php" class="chip-btn" title="Abmelden" style="background: rgba(247, 37, 133, 0.15); border-color: rgba(247, 37, 133, 0.3); color: #ff4d6d;">
-                    Abmelden 🚪
+                <a href="logout.php" class="btn-logout" title="Abmelden">
+                    <span>Abmelden 🚪</span>
                 </a>
                 <button id="theme-toggle" class="theme-toggle" title="Design-Modus umschalten">
                     🌙
@@ -371,14 +357,12 @@ if ($isAjaxRequest) {
         </nav>
     </header>
 
-    <!-- Main Content Container (Centered & Offset for Fixed Header) -->
+    <!-- Main Content Container -->
     <main class="camera-main">
         <section class="photo-capture-section">
-            <div class="hero-glow"></div>
-            
-            <div class="photo-card glass-panel">
+            <div class="photo-card">
                 <div class="card-header">
-                    <h1 class="card-title">Foto <span class="gradient-text">aufnehmen</span></h1>
+                    <h1 class="card-title">Foto <span class="accent-text">aufnehmen</span></h1>
                     <p class="card-subtitle">
                         Tippe auf den Button, um die Kamera zu öffnen. Das Foto wird direkt auf dem Server gespeichert.
                     </p>

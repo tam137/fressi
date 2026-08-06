@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 ?>
 <!DOCTYPE html>
-<html lang="de" data-theme="dark">
+<html lang="de" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -73,62 +73,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <style>
         html, body {
             height: 100%;
-            overflow: hidden;
+            overflow: auto;
         }
 
         .login-container {
-            height: 100vh;
-            height: 100dvh;
+            min-height: 100vh;
+            min-height: 100dvh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 1rem;
+            padding: 1.5rem 1rem;
             position: relative;
             width: 100%;
-            max-width: 100%;
-            overflow: hidden;
+            box-sizing: border-box;
         }
 
         .login-card {
             width: 100%;
-            max-width: 420px;
-            padding: 2.2rem 1.8rem;
+            max-width: 440px;
+            padding: 2.5rem 2rem;
             position: relative;
             z-index: 10;
-            max-height: calc(100dvh - 2rem);
+            background: var(--bg-card);
+            border: 2px solid var(--border-vintage);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-paper);
             box-sizing: border-box;
         }
 
         @media (max-width: 480px) {
-            .login-container {
-                padding: 0.75rem;
-            }
             .login-card {
-                padding: 1.5rem 1.25rem;
+                padding: 1.75rem 1.25rem;
             }
             .login-header {
-                margin-bottom: 1.2rem;
-            }
-            .login-logo {
-                margin-bottom: 0.5rem;
-            }
-            .login-logo .logo-icon {
-                width: 42px;
-                height: 42px;
-                font-size: 1.3rem;
+                margin-bottom: 1.5rem;
             }
             .login-title {
-                font-size: 1.5rem;
-            }
-            .form-group {
-                margin-bottom: 0.85rem;
-            }
-            .form-options {
-                margin-bottom: 1.2rem;
-            }
-            .btn-login {
-                padding: 0.75rem 1.2rem;
-                font-size: 1rem;
+                font-size: 1.75rem;
             }
         }
 
@@ -145,22 +126,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .login-logo .logo-icon {
-            width: 48px;
-            height: 48px;
-            background: var(--gradient-hero);
-            border-radius: 14px;
+            width: 52px;
+            height: 52px;
+            background: var(--bg-secondary);
+            border: 2px solid var(--accent-green);
+            border-radius: var(--radius-full);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.5rem;
-            box-shadow: var(--shadow-glow);
-            transform: rotate(-5deg);
+            font-size: 1.6rem;
+            box-shadow: var(--shadow-sm);
         }
 
         .login-title {
-            font-size: 1.8rem;
+            font-family: var(--font-heading);
+            font-size: 2rem;
             font-weight: 800;
             margin-bottom: 0.4rem;
+            color: var(--text-primary);
         }
 
         .login-subtitle {
@@ -170,24 +153,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         .alert-banner {
             padding: 0.85rem 1.2rem;
-            border-radius: var(--radius-sm);
+            border-radius: var(--radius-md);
             margin-bottom: 1.5rem;
             font-size: 0.9rem;
             display: flex;
             align-items: center;
             gap: 0.6rem;
+            border: 2px solid var(--border-vintage);
         }
 
         .alert-danger {
-            background: rgba(247, 37, 133, 0.15);
-            border: 1px solid rgba(247, 37, 133, 0.3);
-            color: #ff4d6d;
+            background: var(--bg-secondary);
+            border-color: var(--accent-terracotta);
+            color: var(--accent-terracotta);
         }
 
         .alert-success {
-            background: rgba(16, 185, 129, 0.15);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            color: #10b981;
+            background: var(--bg-secondary);
+            border-color: var(--accent-green);
+            color: var(--accent-green);
+        }
+
+        .form-group {
+            margin-bottom: 1.2rem;
+        }
+
+        .form-label {
+            display: block;
+            font-family: var(--font-heading);
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 0.4rem;
+            color: var(--text-primary);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.85rem 1.1rem;
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-vintage);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color var(--transition-fast);
+        }
+
+        .form-input:focus {
+            border-color: var(--accent-green);
+            background: var(--bg-card);
         }
 
         .form-options {
@@ -209,7 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         .checkbox-label input[type="checkbox"] {
-            accent-color: var(--accent-orange);
+            accent-color: var(--accent-green);
             width: 18px;
             height: 18px;
             cursor: pointer;
@@ -218,35 +233,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .btn-login {
             width: 100%;
             padding: 0.9rem 1.5rem;
-            border-radius: var(--radius-sm);
-            background: var(--gradient-hero);
-            color: white;
+            border-radius: var(--radius-full);
+            background: var(--accent-green);
+            color: #ffffff;
+            font-family: var(--font-heading);
             font-weight: 700;
-            font-size: 1.05rem;
+            font-size: 1.15rem;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 0.6rem;
-            box-shadow: var(--shadow-glow);
-            transition: all var(--transition-bounce);
+            border: 2px solid var(--accent-green-hover);
+            box-shadow: var(--shadow-paper);
+            transition: all var(--transition-fast);
         }
 
         .btn-login:hover {
+            background: var(--accent-green-hover);
             transform: translateY(-2px);
-            box-shadow: 0 10px 30px rgba(255, 107, 53, 0.45);
+            box-shadow: var(--shadow-paper-hover);
         }
 
         .btn-login:active {
             transform: translateY(0);
+            box-shadow: none;
         }
     </style>
 </head>
 <body>
 
     <div class="login-container">
-        <div class="hero-glow" style="top: 20%; left: 50%; transform: translate(-50%, -50%);"></div>
-
-        <div class="login-card glass-panel">
+        <div class="login-card">
             <div class="login-header">
                 <div class="login-logo">
                     <div class="logo-icon">🍲</div>
@@ -286,7 +303,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <button type="submit" class="btn-login" id="btn-login">
-                    Anmelden 🚀
+                    <span>Anmelden 🚀</span>
                 </button>
             </form>
         </div>

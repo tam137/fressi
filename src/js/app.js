@@ -5,8 +5,9 @@
 document.addEventListener('DOMContentLoaded', () => {
   // Theme Management
   const themeToggle = document.getElementById('theme-toggle');
-  const currentTheme = localStorage.getItem('fressi_theme') || 'dark';
+  const currentTheme = localStorage.getItem('fressi_theme') || 'light';
   document.documentElement.setAttribute('data-theme', currentTheme);
+
   if (themeToggle) {
     themeToggle.textContent = currentTheme === 'dark' ? '🌙' : '☀️';
     themeToggle.addEventListener('click', () => {
@@ -27,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Trigger camera dialog
   function openCamera() {
-    hideStatus(); // Clear previous status when starting a new capture
+    hideStatus();
     if (photoInput) {
       photoInput.click();
     }
@@ -38,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if (dropzone) {
     dropzone.addEventListener('click', (e) => {
-      if (e.target !== triggerBtn) {
+      if (!triggerBtn || (e.target !== triggerBtn && !triggerBtn.contains(e.target))) {
         openCamera();
       }
     });
@@ -112,7 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (response.ok && result.status === 'success') {
-        let statusHtml = `<strong>✅ ${result.message}</strong>`;
+        let statusHtml = `<strong>✅ ${escapeHtml(result.message)}</strong>`;
         if (result.ai_description) {
           statusHtml += `<div class="ai-description">🤖 <strong>KI-Ernährungsratgeber:</strong><br><br>${formatAiDescription(result.ai_description)}</div>`;
         }
