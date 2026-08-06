@@ -89,21 +89,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Camera & Photo Gallery Upload Handling
-  function openCamera() {
-    hideStatus();
-    if (photoInputCamera) photoInputCamera.click();
-  }
-
-  function openGallery() {
-    hideStatus();
-    if (photoInputGallery) photoInputGallery.click();
-  }
-
   if (triggerCameraBtn) {
-    triggerCameraBtn.addEventListener('click', openCamera);
+    triggerCameraBtn.addEventListener('click', () => hideStatus());
   }
   if (triggerGalleryBtn) {
-    triggerGalleryBtn.addEventListener('click', openGallery);
+    triggerGalleryBtn.addEventListener('click', () => hideStatus());
   }
 
   function handleFileSelection(inputEl) {
@@ -138,11 +128,11 @@ document.addEventListener('DOMContentLoaded', () => {
   async function uploadPhoto(file) {
     showStatus('Foto wird hochgeladen & von KI analysiert... ⏳', 'info');
     if (triggerCameraBtn) {
-      triggerCameraBtn.disabled = true;
+      triggerCameraBtn.classList.add('disabled');
       triggerCameraBtn.innerHTML = `<span>Wird analysiert...</span> ⏳`;
     }
     if (triggerGalleryBtn) {
-      triggerGalleryBtn.disabled = true;
+      triggerGalleryBtn.classList.add('disabled');
       triggerGalleryBtn.innerHTML = `<span>Wird analysiert...</span> ⏳`;
     }
 
@@ -199,11 +189,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (photoInputCamera) photoInputCamera.value = '';
       if (photoInputGallery) photoInputGallery.value = '';
       if (triggerCameraBtn) {
-        triggerCameraBtn.disabled = false;
+        triggerCameraBtn.classList.remove('disabled');
         triggerCameraBtn.innerHTML = `Foto aufnehmen 📷`;
       }
       if (triggerGalleryBtn) {
-        triggerGalleryBtn.disabled = false;
+        triggerGalleryBtn.classList.remove('disabled');
         triggerGalleryBtn.innerHTML = `Aus Galerie wählen 🖼️`;
       }
     }

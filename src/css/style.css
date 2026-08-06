@@ -415,6 +415,8 @@ button {
   border: 2px solid var(--accent-green-hover);
   box-shadow: var(--shadow-paper);
   transition: all var(--transition-fast);
+  cursor: pointer;
+  user-select: none;
 }
 
 .btn-primary:hover {
@@ -428,9 +430,10 @@ button {
   box-shadow: none;
 }
 
-.btn-primary:disabled {
+.btn-primary:disabled, .btn-primary.disabled, .btn-secondary.disabled {
   opacity: 0.65;
   cursor: not-allowed;
+  pointer-events: none;
   transform: none !important;
 }
 
