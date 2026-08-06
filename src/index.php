@@ -88,9 +88,10 @@ function normalize_image_for_gemini($filePath, $mimeType) {
  * 
  * @param string $filePath Pfad zur Bilddatei
  * @param string $mimeType MIME-Typ des Bildes
- * @return array ['success' => bool, 'text' => string|null, 'error' => string|null]
+ * @param string $promptText Prompt für die Analyse
+ * @return array ['success' => bool, 'data' => array|null, 'error' => string|null]
  */
-function analyze_image_with_gemini($filePath, $mimeType) {
+function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
     global $gemini_key, $config, $db_config;
     $apiKey = $gemini_key ?? ($config['gemini_key'] ?? ($db_config['gemini_key'] ?? (getenv('gemini_key') ?: (getenv('GEMINI_KEY') ?: null))));
 
@@ -124,18 +125,6 @@ function analyze_image_with_gemini($filePath, $mimeType) {
 
     $base64Image = base64_encode($imageData);
 
-    $promptsFile = __DIR__ . '/prompts.php';
-    $prompts = file_exists($promptsFile) ? require $promptsFile : [];
-    $promptText = $prompts['image_analysis'] ?? null;
-
-    if (empty($promptText)) {
-        if ($isTempFile && file_exists($activePath)) { @unlink($activePath); }
-        return [
-            'success' => false,
-            'error' => 'KI-Prompt konnte nicht geladen werden (src/prompts.php fehlt oder unvollständig).'
-        ];
-    }
-
     $models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
     $lastError = 'Unbekannter Fehler';
 
@@ -157,6 +146,9 @@ function analyze_image_with_gemini($filePath, $mimeType) {
                         ]
                     ]
                 ]
+            ],
+            'generationConfig' => [
+                'response_mime_type' => 'application/json'
             ]
         ];
 
@@ -193,14 +185,24 @@ function analyze_image_with_gemini($filePath, $mimeType) {
         }
 
         $responseData = json_decode($response, true);
-        $description = $responseData['candidates'][0]['content']['parts'][0]['text'] ?? null;
+        $rawText = $responseData['candidates'][0]['content']['parts'][0]['text'] ?? null;
 
-        if (!empty($description)) {
+        if (!empty($rawText)) {
             if ($isTempFile && file_exists($activePath)) { @unlink($activePath); }
-            return [
-                'success' => true,
-                'text' => trim($description)
-            ];
+
+            // Clean Markdown JSON block wrapper if returned
+            $cleanedJson = preg_replace('/^```(?:json)?\s*/i', '', trim($rawText));
+            $cleanedJson = preg_replace('/\s*```$/', '', $cleanedJson);
+
+            $parsedData = json_decode($cleanedJson, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($parsedData)) {
+                return [
+                    'success' => true,
+                    'data' => $parsedData
+                ];
+            } else {
+                $lastError = 'KI-Antwort war kein gültiges JSON: ' . json_last_error_msg();
+            }
         } else {
             $lastError = 'Keine gültige Text-Antwort von Gemini erhalten.';
         }
@@ -216,12 +218,73 @@ function analyze_image_with_gemini($filePath, $mimeType) {
 
 $isAjaxRequest = ($_SERVER['REQUEST_METHOD'] === 'POST') && (
     isset($_POST['ajax_upload']) ||
+    isset($_POST['action']) ||
     (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
 );
 
 if ($isAjaxRequest) {
     header('Content-Type: application/json');
 
+    $action = $_POST['action'] ?? 'upload_photo';
+
+    // Handler 1: Refinement Loop (Nutzer hat Zutaten/Text geändert)
+    if ($action === 'refine_summary') {
+        $photoPath = $_POST['photo_path'] ?? '';
+        $previousRating = $_POST['previous_rating'] ?? '';
+        $ingredientsInput = $_POST['ingredients'] ?? '';
+        $notes = $_POST['notes'] ?? '';
+        $portion = (int)($_POST['portion'] ?? 100);
+        $calories = (int)($_POST['calories'] ?? 0);
+
+        // Security check for photo path
+        $uploadsDir = realpath(__DIR__ . '/uploads/photos');
+        $absPath = realpath(__DIR__ . '/' . $photoPath);
+
+        if (!$absPath || !$uploadsDir || strpos($absPath, $uploadsDir) !== 0 || !file_exists($absPath)) {
+            echo json_encode(['status' => 'error', 'message' => 'Das zugehörige Foto konnte auf dem Server nicht gefunden werden.']);
+            exit;
+        }
+
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeType = finfo_file($finfo, $absPath);
+        finfo_close($finfo);
+
+        $promptsFile = __DIR__ . '/prompts.php';
+        $prompts = file_exists($promptsFile) ? require $promptsFile : [];
+        $templatePrompt = $prompts['refine_analysis'] ?? '';
+
+        if (empty($templatePrompt)) {
+            echo json_encode(['status' => 'error', 'message' => 'Refinement-Prompt fehlt in prompts.php']);
+            exit;
+        }
+
+        $ingredientsStr = is_array($ingredientsInput) ? implode(', ', $ingredientsInput) : (string)$ingredientsInput;
+
+        $promptText = str_replace(
+            ['{PREVIOUS_RATING}', '{USER_INGREDIENTS}', '{USER_NOTES}', '{USER_PORTION}', '{USER_CALORIES}'],
+            [$previousRating, $ingredientsStr, $notes ?: 'Keine zusätzlichen Anmerkungen', $portion, $calories],
+            $templatePrompt
+        );
+
+        $aiResult = analyze_image_with_gemini($absPath, $mimeType, $promptText);
+
+        if (!$aiResult['success']) {
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'KI-Neubewertung fehlgeschlagen: ' . $aiResult['error']
+            ]);
+            exit;
+        }
+
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'Wertigkeit erfolgreich von KI aktualisiert!',
+            'data' => $aiResult['data']
+        ]);
+        exit;
+    }
+
+    // Handler 2: Erstmaliger Photo Upload & Analyse
     if (empty($_POST) && empty($_FILES) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
         echo json_encode(['status' => 'error', 'message' => 'Die hochgeladene Datei überschreitet die maximale Server-Uploadgröße (post_max_size).']);
         exit;
@@ -289,13 +352,34 @@ if ($isAjaxRequest) {
         exit;
     }
 
-    $aiResult = analyze_image_with_gemini($targetPath, $mimeType);
+    $promptsFile = __DIR__ . '/prompts.php';
+    $prompts = file_exists($promptsFile) ? require $promptsFile : [];
+    $promptText = $prompts['image_analysis'] ?? '';
+
+    if (empty($promptText)) {
+        @unlink($targetPath);
+        echo json_encode(['status' => 'error', 'message' => 'KI-Prompt konnte nicht geladen werden (prompts.php)']);
+        exit;
+    }
+
+    $aiResult = analyze_image_with_gemini($targetPath, $mimeType, $promptText);
 
     if (!$aiResult['success']) {
         @unlink($targetPath);
         echo json_encode([
             'status' => 'error',
             'message' => 'Upload abgelehnt: KI-Bildanalyse fehlgeschlagen (' . $aiResult['error'] . ')'
+        ]);
+        exit;
+    }
+
+    $data = $aiResult['data'];
+    if (isset($data['is_food']) && $data['is_food'] === false) {
+        @unlink($targetPath);
+        $errMsg = $data['error_message'] ?? '⚠️ Kein Essen, Getränk oder Lebensmittel-Etikett erkannt.';
+        echo json_encode([
+            'status' => 'error',
+            'message' => $errMsg
         ]);
         exit;
     }
@@ -308,7 +392,7 @@ if ($isAjaxRequest) {
         'filename' => $newFileName,
         'path' => $webPath,
         'uploaded_at' => date('d.m.Y H:i:s'),
-        'ai_description' => $aiResult['text']
+        'data' => $data
     ]);
     exit;
 }
@@ -360,11 +444,12 @@ if ($isAjaxRequest) {
     <!-- Main Content Container -->
     <main class="camera-main">
         <section class="photo-capture-section">
-            <div class="photo-card">
+            <!-- Initial Upload Card -->
+            <div id="photo-card" class="photo-card">
                 <div class="card-header">
                     <h1 class="card-title">Foto <span class="accent-text">aufnehmen</span></h1>
                     <p class="card-subtitle">
-                        Tippe auf den Button, um die Kamera zu öffnen. Das Foto wird direkt auf dem Server gespeichert.
+                        Tippe auf den Button, um die Kamera zu öffnen. Das Foto wird direkt von der KI analysiert.
                     </p>
                 </div>
 
@@ -383,6 +468,93 @@ if ($isAjaxRequest) {
 
                 <!-- Status Feedback Message -->
                 <div id="status-box" class="status-box" style="display: none;"></div>
+            </div>
+
+            <!-- Validation & Refinement Card (Hidden by default) -->
+            <div id="validation-card" class="photo-card validation-card" style="display: none;">
+                <div class="card-header">
+                    <div class="meal-preview-header">
+                        <img id="meal-photo-preview" src="" alt="Mahlzeit Vorschau" class="meal-photo-thumb">
+                        <div>
+                            <h2 id="meal-title" class="card-title meal-title">Mahlzeit</h2>
+                            <span class="status-header-badge">KI-Analyse Überprüfung</span>
+                        </div>
+                    </div>
+                </div>
+
+                <form id="validation-form" class="validation-form" onsubmit="return false;">
+                    <!-- Date & Time Input (15-min interval) -->
+                    <div class="form-group">
+                        <label for="field-datetime" class="form-label">📅 Datum & Uhrzeit der Anfrage</label>
+                        <input type="datetime-local" id="field-datetime" class="form-control" step="900">
+                    </div>
+
+                    <!-- Editable Ingredients -->
+                    <div class="form-group">
+                        <label class="form-label">🥗 Zutaten & Bestandteile <small>(bearbeitbar)</small></label>
+                        <div id="ingredients-container" class="ingredients-container">
+                            <div id="ingredients-chips" class="ingredients-chips"></div>
+                            <div class="add-ingredient-box">
+                                <input type="text" id="add-ingredient-input" class="form-control form-control-sm" placeholder="Neue Zutat eingeben...">
+                                <button type="button" id="btn-add-ingredient" class="btn-sm btn-outline">+ Hinzufügen</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Read-only Health Rating / Value Description -->
+                    <div class="form-group">
+                        <label class="form-label">💚 Wertigkeit & Wohlbefinden <small>(von KI berechnet)</small></label>
+                        <div id="health-rating-display" class="health-rating-box"></div>
+                    </div>
+
+                    <!-- Portion & Calories Row -->
+                    <div class="form-row">
+                        <div class="form-group col-half">
+                            <label for="field-portion" class="form-label">🍽️ Verzehrmenge</label>
+                            <select id="field-portion" class="form-control">
+                                <option value="10">10 %</option>
+                                <option value="20">20 %</option>
+                                <option value="30">30 %</option>
+                                <option value="40">40 %</option>
+                                <option value="50">50 %</option>
+                                <option value="60">60 %</option>
+                                <option value="70">70 %</option>
+                                <option value="80">80 %</option>
+                                <option value="90">90 %</option>
+                                <option value="100" selected>100 % (Standard)</option>
+                                <option value="110">110 %</option>
+                                <option value="120">120 %</option>
+                                <option value="130">130 %</option>
+                                <option value="140">140 %</option>
+                                <option value="150">150 %</option>
+                                <option value="200">200 %</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-half">
+                            <label for="field-calories" class="form-label">🔥 Kalorien (insgesamt)</label>
+                            <div class="input-unit-wrapper">
+                                <input type="number" id="field-calories" class="form-control" min="0" step="5">
+                                <span class="unit-label">kcal</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Free Text Notes / Missing Ingredients -->
+                    <div class="form-group">
+                        <label for="field-notes" class="form-label">📝 Zusätzliche Infos / Nicht erkannte Zutaten</label>
+                        <textarea id="field-notes" class="form-control" rows="3" placeholder="z. B. 1 EL Olivenöl extra, oder Hafermilch statt Kuhmilch..."></textarea>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="action-buttons-group">
+                        <button type="button" id="btn-save" class="btn-primary btn-save">
+                            Speichern 💾
+                        </button>
+                        <button type="button" id="btn-discard" class="btn-secondary btn-discard">
+                            Verwerfen 🗑️
+                        </button>
+                    </div>
+                </form>
             </div>
         </section>
     </main>
