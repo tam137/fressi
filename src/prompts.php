@@ -33,7 +33,7 @@ Gib folgendes JSON-Objekt zurück:
 }
 
 Hinweise:
-- Nutze bei Bedarf die Websuche / Nährwert-Datenbanken, um die Kalorienangaben für die erkannten Lebensmittel, Portionsgrößen oder Markenprodukte möglichst exakt und präzise festzustellen.
+- Nutze bei Bedarf Nährwert-Datenbanken, um die Kalorienangaben für die erkannten Lebensmittel, Portionsgrößen oder Markenprodukte möglichst exakt und präzise festzustellen.
 - `ingredients`: Eine Liste aller einzeln erkannten Zutaten und Bestandteile (kurze prägnante Begriffe).
 - `health_rating`: Prägnante, verständliche Erläuterung auf Deutsch in der Du-Form, optimiert für Smartphones.
 - `calories`: Eine präzise geschätzte Zahl der Gesamtkalorien (nur als reine Ganzzahl, z. B. 450).
@@ -53,6 +53,10 @@ Hier sind die Angaben:
 - Gewählte Verzehrmenge: {USER_PORTION}%
 - Vom Nutzer eingegebene Kalorien: {USER_CALORIES} kcal
 
+WICHTIGE REGELN FÜR DIE AKTUALISIERUNG:
+- Nutzerkorrekturen und Freitext-Anmerkungen haben ABSTOLUTE PRIORITÄT vor bisherigen Annahmen und der ursprünglichen Bildanalyse.
+- Falls Nutzerangaben bisherigen Annahmen widersprechen (z. B. "alkoholfrei" statt alkoholhaltigem Bier, "zuckerfrei", "Hafermilch" statt Kuhmilch, vegane Alternative etc.), MÜSSEN alle vorherigen Warnungen und Hinweise, die auf der falschen Annahme basierten (z. B. Alkoholrisiken), VOLLSTÄNDIG GESTRICHEN und durch eine zutreffende Bewertung des korrigierten Produkts ersetzt werden.
+
 Erstelle nun ein aktualisiertes JSON-Objekt:
 {
   "is_food": true,
@@ -64,7 +68,7 @@ Erstelle nun ein aktualisiertes JSON-Objekt:
   "calories": {USER_CALORIES}
 }
 
-Hinweis: Nutze bei Bedarf die Websuche, um die genauen Kalorien und ernährungsphysiologischen Eigenschaften der vom Nutzer korrigierten oder ergänzten Zutaten exakt zu überprüfen.
+Hinweis: Berücksichtige die genauen Kalorien und ernährungsphysiologischen Eigenschaften der vom Nutzer korrigierten oder ergänzten Zutaten exakt.
 Halte die Sprache prägnant, verständlich und auf Deutsch in der Du-Form.
 PROMPT
 ];

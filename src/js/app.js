@@ -331,7 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnSave) {
     btnSave.addEventListener('click', async () => {
       btnSave.disabled = true;
-      btnSave.innerHTML = `Analysiere mit Websuche... ⏳`;
+      btnSave.innerHTML = `Analysiere... ⏳`;
 
       // Read latest user values from input elements
       const latestIngredients = Array.from(document.querySelectorAll('.ingredient-chip-input'))
