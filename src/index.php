@@ -476,6 +476,23 @@ if ($isAjaxRequest) {
     ]);
     exit;
 }
+
+// Determine build timestamp (Git commit time if available, otherwise file modification time fallback)
+$buildTimestamp = null;
+if (function_exists('exec') && is_dir(__DIR__ . '/../.git')) {
+    $gitTimestamp = @exec('git -C ' . escapeshellarg(__DIR__) . ' log -1 --format="%ct"');
+    if (is_numeric($gitTimestamp) && (int)$gitTimestamp > 0) {
+        $buildTimestamp = (int)$gitTimestamp;
+    }
+}
+if (!$buildTimestamp) {
+    $buildTimestamp = max(
+        filemtime(__DIR__ . '/index.php'),
+        filemtime(__DIR__ . '/js/app.js'),
+        filemtime(__DIR__ . '/css/style.css')
+    );
+}
+$buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
 ?>
 <!DOCTYPE html>
 <html lang="de" data-theme="light">
@@ -638,6 +655,11 @@ if ($isAjaxRequest) {
                 </form>
             </div>
         </section>
+
+        <!-- Build Info Footer -->
+        <footer class="build-info-footer">
+            <small>Letzter Build: <?php echo htmlspecialchars($buildDateFormatted); ?></small>
+        </footer>
     </main>
 
     <!-- Toast Container -->
