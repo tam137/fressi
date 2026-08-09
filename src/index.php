@@ -126,88 +126,100 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
     $base64Image = base64_encode($imageData);
 
     $models = ['gemini-3.6-flash', 'gemini-3.5-flash'];
+    $maxPasses = 2;
+    $attemptCount = 0;
     $lastError = 'Unbekannter Fehler';
 
-    foreach ($models as $model) {
-        $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . $model . ':generateContent?key=' . urlencode($apiKey);
+    for ($pass = 1; $pass <= $maxPasses; $pass++) {
+        foreach ($models as $model) {
+            $attemptCount++;
 
-        $payload = [
-            'contents' => [
-                [
-                    'parts' => [
-                        [
-                            'text' => $promptText
-                        ],
-                        [
-                            'inline_data' => [
-                                'mime_type' => $activeMime,
-                                'data' => $base64Image
+            if ($attemptCount > 1) {
+                sleep(1);
+            }
+
+            $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . $model . ':generateContent?key=' . urlencode($apiKey);
+
+            $payload = [
+                'contents' => [
+                    [
+                        'parts' => [
+                            [
+                                'text' => $promptText
+                            ],
+                            [
+                                'inline_data' => [
+                                    'mime_type' => $activeMime,
+                                    'data' => $base64Image
+                                ]
                             ]
                         ]
                     ]
+                ],
+                'tools' => [
+                    ['googleSearch' => (object)[]]
+                ],
+                'generationConfig' => [
+                    'response_mime_type' => 'application/json'
                 ]
-            ],
-            'tools' => [
-                ['googleSearch' => (object)[]]
-            ],
-            'generationConfig' => [
-                'response_mime_type' => 'application/json'
-            ]
-        ];
+            ];
 
-        $jsonPayload = json_encode($payload);
+            $jsonPayload = json_encode($payload);
 
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-            CURLOPT_POSTFIELDS     => $jsonPayload,
-            CURLOPT_TIMEOUT        => 25,
-            CURLOPT_CONNECTTIMEOUT => 10
-        ]);
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST           => true,
+                CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+                CURLOPT_POSTFIELDS     => $jsonPayload,
+                CURLOPT_TIMEOUT        => 25,
+                CURLOPT_CONNECTTIMEOUT => 10
+            ]);
 
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlErr  = curl_error($ch);
-        curl_close($ch);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlErr  = curl_error($ch);
+            curl_close($ch);
 
-        if ($response === false || !empty($curlErr)) {
-            $lastError = 'Verbindung zur Gemini API fehlgeschlagen: ' . ($curlErr ?: 'Unbekannter Fehler');
-            continue;
-        }
-
-        if ($httpCode !== 200) {
-            $errorData = json_decode($response, true);
-            $msg = $errorData['error']['message'] ?? ('HTTP Status ' . $httpCode);
-            $lastError = 'Gemini API Fehler (' . $model . '): ' . $msg;
-            if ($httpCode === 404) {
+            if ($response === false || !empty($curlErr)) {
+                $lastError = 'Verbindung zur Gemini API fehlgeschlagen: ' . ($curlErr ?: 'Unbekannter Fehler');
                 continue;
             }
-            break;
-        }
 
-        $responseData = json_decode($response, true);
-        $rawText = $responseData['candidates'][0]['content']['parts'][0]['text'] ?? null;
-
-        if (!empty($rawText)) {
-            if ($isTempFile && file_exists($activePath)) { @unlink($activePath); }
-
-            // Clean Markdown JSON block wrapper if returned
-            $cleanedJson = preg_replace('/^```(?:json)?\s*/i', '', trim($rawText));
-            $cleanedJson = preg_replace('/\s*```$/', '', $cleanedJson);
-
-            $parsedData = json_decode($cleanedJson, true);
-            if (json_last_error() === JSON_ERROR_NONE && is_array($parsedData)) {
-                return [
-                    'success' => true,
-                    'data' => $parsedData
-                ];
-            } else {
-                $lastError = 'KI-Antwort war kein gültiges JSON: ' . json_last_error_msg();
+            if ($httpCode !== 200) {
+                $errorData = json_decode($response, true);
+                $msg = $errorData['error']['message'] ?? ('HTTP Status ' . $httpCode);
+                $lastError = 'Gemini API Fehler (' . $model . '): ' . $msg;
+                if ($httpCode === 401 || $httpCode === 403) {
+                    break 2;
+                }
+                continue;
             }
-        } else {
-            $lastError = 'Keine gültige Text-Antwort von Gemini erhalten.';
+
+            $responseData = json_decode($response, true);
+            $rawText = $responseData['candidates'][0]['content']['parts'][0]['text'] ?? null;
+
+            if (!empty($rawText)) {
+                if ($isTempFile && file_exists($activePath)) { @unlink($activePath); }
+
+                // Clean Markdown JSON block wrapper if returned
+                $cleanedJson = preg_replace('/^```(?:json)?\s*/i', '', trim($rawText));
+                $cleanedJson = preg_replace('/\s*```$/', '', $cleanedJson);
+
+                $parsedData = json_decode($cleanedJson, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($parsedData)) {
+                    return [
+                        'success' => true,
+                        'data' => $parsedData,
+                        'model' => $model,
+                        'attempts' => $attemptCount
+                    ];
+                } else {
+                    $lastError = 'KI-Antwort war kein gültiges JSON: ' . json_last_error_msg();
+                }
+            } else {
+                $lastError = 'Keine gültige Text-Antwort von Gemini erhalten.';
+            }
         }
     }
 
@@ -215,7 +227,7 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
 
     return [
         'success' => false,
-        'error' => $lastError
+        'error' => "Fehler nach {$attemptCount} Versuchen: " . $lastError
     ];
 }
 
@@ -282,7 +294,9 @@ if ($isAjaxRequest) {
         echo json_encode([
             'status' => 'success',
             'message' => 'Wertigkeit erfolgreich von KI aktualisiert!',
-            'data' => $aiResult['data']
+            'data' => $aiResult['data'],
+            'model' => $aiResult['model'] ?? null,
+            'attempts' => $aiResult['attempts'] ?? null
         ]);
         exit;
     }
@@ -395,7 +409,9 @@ if ($isAjaxRequest) {
         'filename' => $newFileName,
         'path' => $webPath,
         'uploaded_at' => date('d.m.Y H:i:s'),
-        'data' => $data
+        'data' => $data,
+        'model' => $aiResult['model'] ?? null,
+        'attempts' => $aiResult['attempts'] ?? null
     ]);
     exit;
 }
@@ -514,6 +530,7 @@ if ($isAjaxRequest) {
                     <div class="form-group">
                         <label class="form-label">💚 Wertigkeit & Wohlbefinden <small>(von KI berechnet)</small></label>
                         <div id="health-rating-display" class="health-rating-box"></div>
+                        <div id="ai-model-info" class="ai-model-info" style="display: none;"></div>
                     </div>
 
                     <!-- Portion & Calories Row -->

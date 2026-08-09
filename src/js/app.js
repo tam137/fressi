@@ -38,6 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const addIngredientInput = document.getElementById('add-ingredient-input');
   const btnAddIngredient = document.getElementById('btn-add-ingredient');
   const healthRatingDisplay = document.getElementById('health-rating-display');
+  const aiModelInfo = document.getElementById('ai-model-info');
   const fieldPortion = document.getElementById('field-portion');
   const fieldCalories = document.getElementById('field-calories');
   const fieldNotes = document.getElementById('field-notes');
@@ -53,7 +54,9 @@ document.addEventListener('DOMContentLoaded', () => {
     baseCalories: 0,
     currentCalories: 0,
     portion: 100,
-    notes: ''
+    notes: '',
+    model: '',
+    attempts: 0
   };
 
   let needsAiReanalysis = false;
@@ -173,6 +176,8 @@ document.addEventListener('DOMContentLoaded', () => {
         currentAnalysis.currentCalories = currentAnalysis.baseCalories;
         currentAnalysis.portion = 100;
         currentAnalysis.notes = '';
+        currentAnalysis.model = result.model || '';
+        currentAnalysis.attempts = parseInt(result.attempts, 10) || 0;
 
         renderValidationView();
       } else {
@@ -199,6 +204,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Render AI Model & Attempt Info Label
+  function renderAiModelInfo() {
+    if (!aiModelInfo) return;
+    if (currentAnalysis.model && currentAnalysis.attempts > 0) {
+      const attemptStr = `${currentAnalysis.attempts}. Versuch`;
+      aiModelInfo.textContent = `🤖 Analysiert mit ${currentAnalysis.model} (${attemptStr})`;
+      aiModelInfo.style.display = 'flex';
+    } else {
+      aiModelInfo.style.display = 'none';
+      aiModelInfo.textContent = '';
+    }
+  }
+
   // Render Validation Screen
   function renderValidationView() {
     if (mealPhotoPreview) mealPhotoPreview.src = currentAnalysis.photoPath;
@@ -209,6 +227,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Render health rating
     if (healthRatingDisplay) healthRatingDisplay.innerHTML = formatAiText(currentAnalysis.healthRating);
+
+    // Render AI Model info label
+    renderAiModelInfo();
 
     // Render portion & calories
     if (fieldPortion) fieldPortion.value = '100';
@@ -393,6 +414,12 @@ document.addEventListener('DOMContentLoaded', () => {
           if (fieldNotes) fieldNotes.value = '';
           currentAnalysis.notes = '';
 
+          if (result.model) {
+            currentAnalysis.model = result.model;
+            currentAnalysis.attempts = parseInt(result.attempts, 10) || 0;
+            renderAiModelInfo();
+          }
+
           resetAiReanalysisState();
           showToast('Angaben gespeichert (Dummy) & Wertigkeit von KI aktualisiert! 🎉');
         } else {
@@ -424,10 +451,13 @@ document.addEventListener('DOMContentLoaded', () => {
         baseCalories: 0,
         currentCalories: 0,
         portion: 100,
-        notes: ''
+        notes: '',
+        model: '',
+        attempts: 0
       };
 
       resetAiReanalysisState();
+      renderAiModelInfo();
       if (validationCard) validationCard.style.display = 'none';
       if (photoCard) photoCard.style.display = 'block';
       hideStatus();

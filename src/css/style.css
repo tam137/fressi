@@ -776,6 +776,17 @@ textarea.form-control {
   margin-bottom: 0.4rem;
 }
 
+.ai-model-info {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  opacity: 0.9;
+}
+
 /* Action Buttons */
 .action-buttons-group {
   display: flex;
