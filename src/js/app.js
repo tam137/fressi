@@ -56,7 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
     portion: 100,
     notes: '',
     model: '',
-    attempts: 0
+    attempts: 0,
+    durationMs: 0
   };
 
   let needsAiReanalysis = false;
@@ -178,6 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentAnalysis.notes = '';
         currentAnalysis.model = result.model || '';
         currentAnalysis.attempts = parseInt(result.attempts, 10) || 0;
+        currentAnalysis.durationMs = parseInt(result.duration_ms, 10) || 0;
 
         renderValidationView();
       } else {
@@ -353,10 +355,67 @@ document.addEventListener('DOMContentLoaded', () => {
       currentAnalysis.portion = parseInt(fieldPortion ? fieldPortion.value : 100, 10) || 100;
       currentAnalysis.currentCalories = parseInt(fieldCalories ? fieldCalories.value : 0, 10) || 0;
 
-      // If only portion or calories were modified, skip AI re-analysis and perform dummy save
+      // If no AI reanalysis is needed, save the meal to the PostgreSQL database
       if (!needsAiReanalysis) {
-        resetAiReanalysisState();
-        showToast('Angaben gespeichert (Dummy)! 💾');
+        btnSave.disabled = true;
+        btnSave.innerHTML = `Speichere... ⏳`;
+
+        const saveFormData = new FormData();
+        saveFormData.append('action', 'save_meal');
+        saveFormData.append('consumed_at', fieldDatetime ? fieldDatetime.value : '');
+        saveFormData.append('title', currentAnalysis.title);
+        saveFormData.append('photo_path', currentAnalysis.photoPath);
+        saveFormData.append('ai_model', currentAnalysis.model);
+        saveFormData.append('ai_attempts', currentAnalysis.attempts);
+        saveFormData.append('processing_time_ms', currentAnalysis.durationMs);
+        currentAnalysis.ingredients.forEach(ing => saveFormData.append('ingredients[]', ing));
+        saveFormData.append('health_rating', currentAnalysis.healthRating);
+        saveFormData.append('calories', currentAnalysis.currentCalories);
+
+        try {
+          const response = await fetch('index.php', {
+            method: 'POST',
+            headers: {
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: saveFormData
+          });
+
+          const saveResult = await response.json();
+
+          if (response.ok && saveResult.status === 'success') {
+            showToast('Mahlzeit erfolgreich gespeichert! 💾');
+
+            // Reset state & form, return to photo capture screen
+            currentAnalysis = {
+              photoPath: '',
+              title: '',
+              ingredients: [],
+              healthRating: '',
+              baseCalories: 0,
+              currentCalories: 0,
+              portion: 100,
+              notes: '',
+              model: '',
+              attempts: 0,
+              durationMs: 0
+            };
+
+            resetAiReanalysisState();
+            renderAiModelInfo();
+            if (validationCard) validationCard.style.display = 'none';
+            if (photoCard) photoCard.style.display = 'block';
+            hideStatus();
+          } else {
+            showToast(`Fehler beim Speichern: ${saveResult.message || 'Unbekannt'} ⚠️`);
+          }
+        } catch (err) {
+          console.error('Save error:', err);
+          showToast('Verbindungsfehler beim Speichern! ❌');
+        } finally {
+          btnSave.disabled = false;
+          btnSave.innerHTML = `Speichern 💾`;
+        }
         return;
       }
 
@@ -417,11 +476,12 @@ document.addEventListener('DOMContentLoaded', () => {
           if (result.model) {
             currentAnalysis.model = result.model;
             currentAnalysis.attempts = parseInt(result.attempts, 10) || 0;
+            currentAnalysis.durationMs = parseInt(result.duration_ms, 10) || 0;
             renderAiModelInfo();
           }
 
           resetAiReanalysisState();
-          showToast('Angaben gespeichert (Dummy) & Wertigkeit von KI aktualisiert! 🎉');
+          showToast('Wertigkeit von KI aktualisiert! 🎉');
         } else {
           showToast(`Fehler bei der Aktualisierung: ${result.message || 'Unbekannt'} ⚠️`);
         }
@@ -453,7 +513,8 @@ document.addEventListener('DOMContentLoaded', () => {
         portion: 100,
         notes: '',
         model: '',
-        attempts: 0
+        attempts: 0,
+        durationMs: 0
       };
 
       resetAiReanalysisState();

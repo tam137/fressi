@@ -158,4 +158,33 @@ function rotate_remember_token($pdo, $token_id, $account_id) {
         error_log("Failed to rotate remember token: " . $e->getMessage());
     }
 }
+
+/**
+ * Ensure that the meals table exists in PostgreSQL.
+ */
+function ensure_meals_table_exists($pdo) {
+    try {
+        $sql = "
+            CREATE TABLE IF NOT EXISTS meals (
+                id BIGSERIAL PRIMARY KEY,
+                account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                consumed_at TIMESTAMPTZ NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                image_filename VARCHAR(255) NOT NULL,
+                ai_model VARCHAR(100),
+                ai_attempts INTEGER NOT NULL DEFAULT 1,
+                processing_time_ms INTEGER NOT NULL DEFAULT 0,
+                ingredients TEXT,
+                health_rating TEXT,
+                calories INTEGER NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_meals_account_consumed ON meals(account_id, consumed_at DESC);
+        ";
+        $pdo->exec($sql);
+    } catch (PDOException $e) {
+        error_log("Failed to ensure meals table exists: " . $e->getMessage());
+    }
+}
 ?>
+

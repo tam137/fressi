@@ -129,6 +129,7 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
     $maxPasses = 2;
     $attemptCount = 0;
     $lastError = 'Unbekannter Fehler';
+    $startTime = microtime(true);
 
     for ($pass = 1; $pass <= $maxPasses; $pass++) {
         foreach ($models as $model) {
@@ -208,11 +209,13 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
 
                 $parsedData = json_decode($cleanedJson, true);
                 if (json_last_error() === JSON_ERROR_NONE && is_array($parsedData)) {
+                    $durationMs = (int)round((microtime(true) - $startTime) * 1000);
                     return [
                         'success' => true,
                         'data' => $parsedData,
                         'model' => $model,
-                        'attempts' => $attemptCount
+                        'attempts' => $attemptCount,
+                        'duration_ms' => $durationMs
                     ];
                 } else {
                     $lastError = 'KI-Antwort war kein gültiges JSON: ' . json_last_error_msg();
@@ -296,12 +299,69 @@ if ($isAjaxRequest) {
             'message' => 'Wertigkeit erfolgreich von KI aktualisiert!',
             'data' => $aiResult['data'],
             'model' => $aiResult['model'] ?? null,
-            'attempts' => $aiResult['attempts'] ?? null
+            'attempts' => $aiResult['attempts'] ?? null,
+            'duration_ms' => $aiResult['duration_ms'] ?? null
         ]);
         exit;
     }
 
-    // Handler 2: Erstmaliger Photo Upload & Analyse
+    // Handler 2: Mahlzeit in Datenbak speichern (User klickt "Speichern 💾")
+    if ($action === 'save_meal') {
+        ensure_meals_table_exists($pdo);
+
+        $consumedAtInput = $_POST['consumed_at'] ?? '';
+        if (!empty($consumedAtInput)) {
+            $timestamp = strtotime($consumedAtInput);
+            $consumedAt = ($timestamp !== false) ? date('Y-m-d H:i:sP', $timestamp) : date('Y-m-d H:i:sP');
+        } else {
+            $consumedAt = date('Y-m-d H:i:sP');
+        }
+
+        $title = trim($_POST['title'] ?? 'Mahlzeit');
+        $photoPath = $_POST['photo_path'] ?? '';
+        $imageFilename = basename($photoPath);
+        $aiModel = $_POST['ai_model'] ?? null;
+        $aiAttempts = (int)($_POST['ai_attempts'] ?? 1);
+        $processingTimeMs = (int)($_POST['processing_time_ms'] ?? 0);
+        $ingredientsInput = $_POST['ingredients'] ?? '';
+        $ingredientsStr = is_array($ingredientsInput) ? implode(', ', $ingredientsInput) : (string)$ingredientsInput;
+        $healthRating = $_POST['health_rating'] ?? '';
+        $calories = (int)($_POST['calories'] ?? 0);
+
+        try {
+            $stmt = $pdo->prepare("
+                INSERT INTO meals (account_id, consumed_at, title, image_filename, ai_model, ai_attempts, processing_time_ms, ingredients, health_rating, calories)
+                VALUES (:account_id, :consumed_at, :title, :image_filename, :ai_model, :ai_attempts, :processing_time_ms, :ingredients, :health_rating, :calories)
+            ");
+            $stmt->execute([
+                'account_id' => $_SESSION['user_id'],
+                'consumed_at' => $consumedAt,
+                'title' => $title,
+                'image_filename' => $imageFilename,
+                'ai_model' => $aiModel,
+                'ai_attempts' => $aiAttempts,
+                'processing_time_ms' => $processingTimeMs,
+                'ingredients' => $ingredientsStr,
+                'health_rating' => $healthRating,
+                'calories' => $calories
+            ]);
+
+            echo json_encode([
+                'status' => 'success',
+                'message' => 'Mahlzeit erfolgreich in der Datenbank gespeichert! 💾'
+            ]);
+            exit;
+        } catch (Exception $e) {
+            error_log("Failed to save meal: " . $e->getMessage());
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Fehler beim Speichern der Mahlzeit in der Datenbank.'
+            ]);
+            exit;
+        }
+    }
+
+    // Handler 3: Erstmaliger Photo Upload & Analyse
     if (empty($_POST) && empty($_FILES) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
         echo json_encode(['status' => 'error', 'message' => 'Die hochgeladene Datei überschreitet die maximale Server-Uploadgröße (post_max_size).']);
         exit;
@@ -411,7 +471,8 @@ if ($isAjaxRequest) {
         'uploaded_at' => date('d.m.Y H:i:s'),
         'data' => $data,
         'model' => $aiResult['model'] ?? null,
-        'attempts' => $aiResult['attempts'] ?? null
+        'attempts' => $aiResult['attempts'] ?? null,
+        'duration_ms' => $aiResult['duration_ms'] ?? null
     ]);
     exit;
 }
