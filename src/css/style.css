@@ -272,8 +272,8 @@ button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding-top: calc(85px + 2rem);
-  padding-bottom: 2.5rem;
+  padding-top: calc(70px + 1rem);
+  padding-bottom: 1rem;
   padding-left: 1rem;
   padding-right: 1rem;
   box-sizing: border-box;
@@ -295,7 +295,7 @@ button {
   position: relative;
   z-index: 2;
   width: 100%;
-  padding: 2.5rem 2rem;
+  padding: 2rem 1.75rem 1.25rem;
   border-radius: var(--radius-lg);
   background: var(--bg-card);
   border: 2px solid var(--border-vintage);
@@ -308,18 +308,29 @@ button {
 }
 
 @media (max-width: 600px) {
+  .camera-main {
+    padding-top: calc(60px + 0.75rem);
+    padding-bottom: 0.75rem;
+  }
+
   .photo-card {
-    padding: 1.75rem 1.25rem;
+    padding: 1.25rem 1rem 0.85rem;
   }
 }
 
 .card-header {
-  margin-bottom: 1.8rem;
+  margin-bottom: 1.2rem;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   width: 100%;
+}
+
+@media (max-width: 600px) {
+  .card-header {
+    margin-bottom: 0.8rem;
+  }
 }
 
 .card-title {
@@ -351,12 +362,18 @@ button {
   justify-content: center;
   width: 100%;
   text-align: center;
-  padding: 2.5rem 1.5rem;
+  padding: 1.8rem 1.2rem;
   border: 2px dashed var(--border-dashed);
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
   cursor: pointer;
   transition: all var(--transition-smooth);
+}
+
+@media (max-width: 600px) {
+  .upload-dropzone {
+    padding: 1.2rem 0.85rem;
+  }
 }
 
 .upload-dropzone:hover {
@@ -376,7 +393,7 @@ button {
   align-items: center;
   justify-content: center;
   color: var(--accent-green);
-  margin-bottom: 1.2rem;
+  margin-bottom: 0.8rem;
   transition: transform var(--transition-fast);
 }
 
@@ -897,10 +914,10 @@ textarea.form-control {
 
 /* Build Info Footer */
 .build-info-footer {
-  margin-top: 1.25rem;
-  margin-bottom: 0.5rem;
+  margin-top: 0.85rem;
+  margin-bottom: 0;
   text-align: center;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
   font-family: var(--font-body);
   opacity: 0.85;

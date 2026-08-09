@@ -571,6 +571,11 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
 
                 <!-- Status Feedback Message -->
                 <div id="status-box" class="status-box" style="display: none;"></div>
+
+                <!-- Build Info Footer -->
+                <footer class="build-info-footer">
+                    <small>Letzter Build: <?php echo htmlspecialchars($buildDateFormatted); ?></small>
+                </footer>
             </div>
 
             <!-- Validation & Refinement Card (Hidden by default) -->
@@ -655,11 +660,6 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                 </form>
             </div>
         </section>
-
-        <!-- Build Info Footer -->
-        <footer class="build-info-footer">
-            <small>Letzter Build: <?php echo htmlspecialchars($buildDateFormatted); ?></small>
-        </footer>
     </main>
 
     <!-- Toast Container -->
