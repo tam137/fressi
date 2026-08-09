@@ -168,17 +168,28 @@ function ensure_meals_table_exists($pdo) {
             CREATE TABLE IF NOT EXISTS meals (
                 id BIGSERIAL PRIMARY KEY,
                 account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-                consumed_at TIMESTAMPTZ NOT NULL,
-                title VARCHAR(255) NOT NULL,
-                image_filename VARCHAR(255) NOT NULL,
+                consumed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                title VARCHAR(255) NOT NULL DEFAULT 'Mahlzeit',
+                image_filename VARCHAR(255) NOT NULL DEFAULT '',
                 ai_model VARCHAR(100),
                 ai_attempts INTEGER NOT NULL DEFAULT 1,
                 processing_time_ms INTEGER NOT NULL DEFAULT 0,
                 ingredients TEXT,
                 health_rating TEXT,
-                calories INTEGER NOT NULL,
+                calories INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
+            ALTER TABLE meals ADD COLUMN IF NOT EXISTS account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE;
+            ALTER TABLE meals ADD COLUMN IF NOT EXISTS consumed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
+            ALTER TABLE meals ADD COLUMN IF NOT EXISTS title VARCHAR(255) DEFAULT 'Mahlzeit';
+            ALTER TABLE meals ADD COLUMN IF NOT EXISTS image_filename VARCHAR(255) DEFAULT '';
+            ALTER TABLE meals ADD COLUMN IF NOT EXISTS ai_model VARCHAR(100);
+            ALTER TABLE meals ADD COLUMN IF NOT EXISTS ai_attempts INTEGER DEFAULT 1;
+            ALTER TABLE meals ADD COLUMN IF NOT EXISTS processing_time_ms INTEGER DEFAULT 0;
+            ALTER TABLE meals ADD COLUMN IF NOT EXISTS ingredients TEXT;
+            ALTER TABLE meals ADD COLUMN IF NOT EXISTS health_rating TEXT;
+            ALTER TABLE meals ADD COLUMN IF NOT EXISTS calories INTEGER DEFAULT 0;
+            ALTER TABLE meals ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
             CREATE INDEX IF NOT EXISTS idx_meals_account_consumed ON meals(account_id, consumed_at DESC);
         ";
         $pdo->exec($sql);

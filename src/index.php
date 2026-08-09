@@ -305,7 +305,7 @@ if ($isAjaxRequest) {
         exit;
     }
 
-    // Handler 2: Mahlzeit in Datenbak speichern (User klickt "Speichern 💾")
+    // Handler 2: Mahlzeit in Datenbank speichern (User klickt "Speichern 💾")
     if ($action === 'save_meal') {
         ensure_meals_table_exists($pdo);
 
@@ -318,15 +318,21 @@ if ($isAjaxRequest) {
         }
 
         $title = trim($_POST['title'] ?? 'Mahlzeit');
+        if (empty($title)) {
+            $title = 'Mahlzeit';
+        }
         $photoPath = $_POST['photo_path'] ?? '';
         $imageFilename = basename($photoPath);
-        $aiModel = $_POST['ai_model'] ?? null;
-        $aiAttempts = (int)($_POST['ai_attempts'] ?? 1);
-        $processingTimeMs = (int)($_POST['processing_time_ms'] ?? 0);
+        
+        $rawAiModel = trim($_POST['ai_model'] ?? '');
+        $aiModel = ($rawAiModel !== '' && $rawAiModel !== 'null' && $rawAiModel !== 'undefined') ? $rawAiModel : null;
+
+        $aiAttempts = max(1, (int)($_POST['ai_attempts'] ?? 1));
+        $processingTimeMs = max(0, (int)($_POST['processing_time_ms'] ?? 0));
         $ingredientsInput = $_POST['ingredients'] ?? '';
-        $ingredientsStr = is_array($ingredientsInput) ? implode(', ', $ingredientsInput) : (string)$ingredientsInput;
+        $ingredientsStr = is_array($ingredientsInput) ? implode(', ', array_filter(array_map('trim', $ingredientsInput))) : trim((string)$ingredientsInput);
         $healthRating = $_POST['health_rating'] ?? '';
-        $calories = (int)($_POST['calories'] ?? 0);
+        $calories = max(0, (int)($_POST['calories'] ?? 0));
 
         try {
             $stmt = $pdo->prepare("
@@ -355,7 +361,8 @@ if ($isAjaxRequest) {
             error_log("Failed to save meal: " . $e->getMessage());
             echo json_encode([
                 'status' => 'error',
-                'message' => 'Fehler beim Speichern der Mahlzeit in der Datenbank.'
+                'message' => 'Fehler beim Speichern der Mahlzeit in der Datenbank.',
+                'error_detail' => $e->getMessage()
             ]);
             exit;
         }

@@ -415,7 +415,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (photoCard) photoCard.style.display = 'block';
             hideStatus();
           } else {
-            showToast(`Fehler beim Speichern: ${saveResult.message || 'Unbekannt'} ⚠️`);
+            const errorMsg = saveResult.message || 'Unbekannter Fehler';
+            const detail = saveResult.error_detail ? ` (${saveResult.error_detail})` : '';
+            showToast(`Fehler beim Speichern: ${errorMsg}${detail} ⚠️`);
           }
         } catch (err) {
           console.error('Save error:', err);
