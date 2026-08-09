@@ -307,7 +307,15 @@ if ($isAjaxRequest) {
 
     // Handler 2: Mahlzeit in Datenbank speichern (User klickt "Speichern 💾")
     if ($action === 'save_meal') {
-        ensure_meals_table_exists($pdo);
+        $tableOk = ensure_meals_table_exists($pdo);
+        if (!$tableOk) {
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Fehler beim Vorbereiten der Datenbank-Tabelle. Bitte erstelle die Tabelle "meals" in der PostgreSQL-Datenbank.',
+                'error_detail' => 'Tabelle "meals" existiert nicht und konnte nicht automatisch erstellt werden (fehlende CREATE-Rechte).'
+            ]);
+            exit;
+        }
 
         $consumedAtInput = $_POST['consumed_at'] ?? '';
         if (!empty($consumedAtInput)) {

@@ -161,8 +161,19 @@ function rotate_remember_token($pdo, $token_id, $account_id) {
 
 /**
  * Ensure that the meals table exists in PostgreSQL.
+ *
+ * @param PDO $pdo
+ * @return bool Returns true if table exists or was created successfully, false on error.
  */
 function ensure_meals_table_exists($pdo) {
+    // Fast path: Check if table already exists and is accessible
+    try {
+        $pdo->query("SELECT 1 FROM meals LIMIT 0");
+        return true;
+    } catch (Exception $e) {
+        // Table does not exist or is not accessible yet, proceed to create
+    }
+
     try {
         // Step 1: Create table if missing
         $createSql = "
@@ -208,8 +219,10 @@ function ensure_meals_table_exists($pdo) {
 
         // Step 3: Create index
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_meals_account_consumed ON meals(account_id, consumed_at DESC);");
+        return true;
     } catch (PDOException $e) {
         error_log("Failed to ensure meals table exists: " . $e->getMessage());
+        return false;
     }
 }
 ?>
