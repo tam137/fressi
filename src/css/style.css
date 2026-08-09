@@ -446,11 +446,17 @@ body.is-validation-mode .camera-main {
 
 .dropzone-buttons {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: clamp(0.4rem, 1.2vh, 0.8rem);
   width: 100%;
+}
+
+.dropzone-buttons .btn-primary,
+.dropzone-buttons .btn-secondary {
+  width: 100%;
+  max-width: 320px;
 }
 
 .btn-primary {
