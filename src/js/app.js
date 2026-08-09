@@ -389,6 +389,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (fieldCalories) fieldCalories.value = currentAnalysis.currentCalories;
           }
 
+          // Clear freitext notes field after successful AI re-evaluation
+          if (fieldNotes) fieldNotes.value = '';
+          currentAnalysis.notes = '';
+
           resetAiReanalysisState();
           showToast('Angaben gespeichert (Dummy) & Wertigkeit von KI aktualisiert! 🎉');
         } else {

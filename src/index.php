@@ -125,7 +125,7 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
 
     $base64Image = base64_encode($imageData);
 
-    $models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
+    $models = ['gemini-3.6-flash', 'gemini-3.5-flash'];
     $lastError = 'Unbekannter Fehler';
 
     foreach ($models as $model) {
