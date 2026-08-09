@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentAnalysis.portion = 100;
         currentAnalysis.notes = '';
         currentAnalysis.model = result.model || '';
-        currentAnalysis.attempts = parseInt(result.attempts, 10) || 0;
+        currentAnalysis.attempts = parseInt(result.attempts, 10) || 1;
         currentAnalysis.durationMs = parseInt(result.duration_ms, 10) || 0;
 
         renderValidationView();
@@ -212,8 +212,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Render AI Model & Attempt Info Label
   function renderAiModelInfo() {
     if (!aiModelInfo) return;
-    if (currentAnalysis.model && currentAnalysis.attempts > 0) {
-      const attemptStr = `${currentAnalysis.attempts}. Versuch`;
+    if (currentAnalysis.model) {
+      const attempts = currentAnalysis.attempts || 1;
+      const attemptStr = `${attempts}. Versuch`;
       aiModelInfo.textContent = `🤖 Analysiert mit ${currentAnalysis.model} (${attemptStr})`;
       aiModelInfo.style.display = 'flex';
     } else {
@@ -482,7 +483,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
           if (result.model) {
             currentAnalysis.model = result.model;
-            currentAnalysis.attempts = parseInt(result.attempts, 10) || 0;
+            currentAnalysis.attempts = parseInt(result.attempts, 10) || 1;
             currentAnalysis.durationMs = parseInt(result.duration_ms, 10) || 0;
             renderAiModelInfo();
           }

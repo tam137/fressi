@@ -666,6 +666,6 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
     <div id="toast-container" class="toast-container"></div>
 
     <!-- JavaScript -->
-    <script src="js/app.js"></script>
+    <script src="js/app.js?v=<?php echo filemtime(__DIR__ . '/js/app.js'); ?>"></script>
 </body>
 </html>
