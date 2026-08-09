@@ -3,6 +3,9 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Set default body mode class
+  document.body.classList.add('is-photo-mode');
+
   // Theme Management
   const themeToggle = document.getElementById('theme-toggle');
   const currentTheme = localStorage.getItem('fressi_theme') || 'light';
@@ -244,7 +247,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Reset modification state
     resetAiReanalysisState();
 
-    // Toggle card views
+    // Toggle card views & layout mode
+    document.body.classList.remove('is-photo-mode');
+    document.body.classList.add('is-validation-mode');
     if (photoCard) photoCard.style.display = 'none';
     if (validationCard) validationCard.style.display = 'block';
   }
@@ -403,6 +408,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             resetAiReanalysisState();
             renderAiModelInfo();
+            document.body.classList.remove('is-validation-mode');
+            document.body.classList.add('is-photo-mode');
             if (validationCard) validationCard.style.display = 'none';
             if (photoCard) photoCard.style.display = 'block';
             hideStatus();
@@ -519,6 +526,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       resetAiReanalysisState();
       renderAiModelInfo();
+      document.body.classList.remove('is-validation-mode');
+      document.body.classList.add('is-photo-mode');
       if (validationCard) validationCard.style.display = 'none';
       if (photoCard) photoCard.style.display = 'block';
       hideStatus();
