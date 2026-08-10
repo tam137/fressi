@@ -391,6 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
           if (response.ok && saveResult.status === 'success') {
             showToast('Mahlzeit erfolgreich gespeichert! 💾');
+            historyLoadedInitial = false;
 
             // Reset state & form, return to photo capture screen
             currentAnalysis = {
@@ -535,6 +536,290 @@ document.addEventListener('DOMContentLoaded', () => {
       if (photoCard) photoCard.style.display = 'block';
       hideStatus();
       showToast('Analyse verworfen. 🗑️');
+    });
+  }
+
+  // ==========================================
+  // Hamburger Menu & Dropdown Logic
+  // ==========================================
+  const hamburgerBtn = document.getElementById('hamburger-btn');
+  const hamburgerDropdown = document.getElementById('hamburger-dropdown');
+  const menuItemHistory = document.getElementById('menu-item-history');
+
+  if (hamburgerBtn && hamburgerDropdown) {
+    hamburgerBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = hamburgerDropdown.style.display === 'block';
+      if (isVisible) {
+        closeHamburgerDropdown();
+      } else {
+        openHamburgerDropdown();
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!hamburgerDropdown.contains(e.target) && !hamburgerBtn.contains(e.target)) {
+        closeHamburgerDropdown();
+      }
+    });
+  }
+
+  function openHamburgerDropdown() {
+    if (!hamburgerDropdown || !hamburgerBtn) return;
+    hamburgerDropdown.style.display = 'block';
+    hamburgerBtn.classList.add('active');
+    hamburgerBtn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeHamburgerDropdown() {
+    if (!hamburgerDropdown || !hamburgerBtn) return;
+    hamburgerDropdown.style.display = 'none';
+    hamburgerBtn.classList.remove('active');
+    hamburgerBtn.setAttribute('aria-expanded', 'false');
+  }
+
+  // ==========================================
+  // View Switching & History Page Controller
+  // ==========================================
+  const historyCard = document.getElementById('history-card');
+  const btnBackToCamera = document.getElementById('btn-back-to-camera');
+  const historyListContainer = document.getElementById('history-list-container');
+  const historyStatus = document.getElementById('history-status');
+  const btnLoadMoreHistory = document.getElementById('btn-load-more-history');
+
+  let historyPage = 0;
+  let historyLoadedInitial = false;
+
+  function showCameraView() {
+    if (historyCard) historyCard.style.display = 'none';
+    if (validationCard) validationCard.style.display = 'none';
+    if (photoCard) photoCard.style.display = 'block';
+    document.body.classList.remove('is-validation-mode');
+    document.body.classList.add('is-photo-mode');
+  }
+
+  function showHistoryView() {
+    if (photoCard) photoCard.style.display = 'none';
+    if (validationCard) validationCard.style.display = 'none';
+    if (historyCard) historyCard.style.display = 'block';
+
+    document.body.classList.remove('is-photo-mode');
+    document.body.classList.remove('is-validation-mode');
+
+    if (!historyLoadedInitial) {
+      historyPage = 0;
+      if (historyListContainer) historyListContainer.innerHTML = '';
+      loadHistoryPage(historyPage, false);
+    }
+  }
+
+  if (menuItemHistory) {
+    menuItemHistory.addEventListener('click', (e) => {
+      e.preventDefault();
+      closeHamburgerDropdown();
+      showHistoryView();
+    });
+  }
+
+  if (btnBackToCamera) {
+    btnBackToCamera.addEventListener('click', () => {
+      showCameraView();
+    });
+  }
+
+  // Load history page from backend API
+  async function loadHistoryPage(page, append = false) {
+    if (!historyListContainer) return;
+
+    if (!append) {
+      historyListContainer.innerHTML = '';
+      showHistoryStatus('Lade Mahlzeiten-Historie... ⏳', 'info');
+    } else if (btnLoadMoreHistory) {
+      btnLoadMoreHistory.disabled = true;
+      btnLoadMoreHistory.innerHTML = 'Lade... ⏳';
+    }
+
+    try {
+      const response = await fetch(`index.php?action=get_history&page=${page}`);
+      const data = await response.json();
+
+      hideHistoryStatus();
+
+      if (data.status !== 'success') {
+        showHistoryStatus(data.message || 'Fehler beim Laden der Historie.', 'error');
+        return;
+      }
+
+      historyLoadedInitial = true;
+      renderHistoryDays(data.days, append);
+
+      if (btnLoadMoreHistory) {
+        btnLoadMoreHistory.disabled = false;
+        btnLoadMoreHistory.innerHTML = 'Mehr laden ⏳';
+        btnLoadMoreHistory.style.display = data.has_more ? 'inline-block' : 'none';
+      }
+    } catch (err) {
+      console.error('History fetch error:', err);
+      hideHistoryStatus();
+      showHistoryStatus('Netzwerkfehler beim Laden der Historie.', 'error');
+      if (btnLoadMoreHistory) {
+        btnLoadMoreHistory.disabled = false;
+        btnLoadMoreHistory.innerHTML = 'Mehr laden ⏳';
+      }
+    }
+  }
+
+  function renderHistoryDays(days, append = false) {
+    if (!historyListContainer || !days) return;
+
+    let hasExistingBlocks = append && historyListContainer.children.length > 0;
+
+    days.forEach((day, index) => {
+      const dayBlock = document.createElement('div');
+      dayBlock.className = 'history-day-block';
+
+      // Insert horizontal line between days
+      if (hasExistingBlocks || index > 0) {
+        const divider = document.createElement('hr');
+        divider.className = 'history-day-divider';
+        historyListContainer.appendChild(divider);
+      }
+
+      const totalKcal = Number(day.total_calories || 0).toLocaleString('de-DE');
+      const isEmpty = !day.meals || day.meals.length === 0;
+
+      let html = `
+        <div class="history-day-header">
+          <div class="day-header-title">
+            <span>📅 ${escapeHtml(day.weekday_name)}, ${escapeHtml(day.date_formatted)}</span>
+          </div>
+          <span class="day-total-badge ${isEmpty ? 'empty-badge' : ''}">${totalKcal} kcal</span>
+        </div>
+      `;
+
+      if (isEmpty) {
+        html += `<div class="history-empty-day-msg">Keine Einträge für diesen Tag</div>`;
+      } else {
+        day.meals.forEach((meal) => {
+          const mealKcal = Number(meal.calories || 0).toLocaleString('de-DE');
+          const jsonStr = escapeHtml(JSON.stringify(meal));
+          html += `
+            <div class="history-meal-item" data-meal='${jsonStr}'>
+              <div class="meal-item-title">${escapeHtml(meal.title || 'Mahlzeit')}</div>
+              <div class="meal-item-sub">
+                <span>⏰ ${escapeHtml(meal.time_formatted)} Uhr</span>
+                <span>•</span>
+                <span>🔥 ${mealKcal} kcal</span>
+              </div>
+            </div>
+          `;
+        });
+      }
+
+      dayBlock.innerHTML = html;
+      historyListContainer.appendChild(dayBlock);
+    });
+  }
+
+  if (btnLoadMoreHistory) {
+    btnLoadMoreHistory.addEventListener('click', () => {
+      historyPage++;
+      loadHistoryPage(historyPage, true);
+    });
+  }
+
+  function showHistoryStatus(msg, type = 'info') {
+    if (!historyStatus) return;
+    historyStatus.className = `status-box status-${type}`;
+    historyStatus.innerHTML = msg;
+    historyStatus.style.display = 'block';
+  }
+
+  function hideHistoryStatus() {
+    if (!historyStatus) return;
+    historyStatus.style.display = 'none';
+    historyStatus.innerHTML = '';
+  }
+
+  // Event Delegation for clicking on history meal items
+  if (historyListContainer) {
+    historyListContainer.addEventListener('click', (e) => {
+      const mealItem = e.target.closest('.history-meal-item');
+      if (mealItem && mealItem.dataset.meal) {
+        try {
+          const mealData = JSON.parse(mealItem.dataset.meal);
+          openMealDetailModal(mealData);
+        } catch (err) {
+          console.error('Failed to parse meal json data', err);
+        }
+      }
+    });
+  }
+
+  // ==========================================
+  // Meal Detail Modal Controller
+  // ==========================================
+  const mealDetailModal = document.getElementById('meal-detail-modal');
+  const btnCloseModal = document.getElementById('btn-close-modal');
+  const modalMealTitle = document.getElementById('modal-meal-title');
+  const modalMealDatetime = document.getElementById('modal-meal-datetime');
+  const modalMealCalories = document.getElementById('modal-meal-calories');
+  const modalMealHealth = document.getElementById('modal-meal-health');
+  const modalIngredientsChips = document.getElementById('modal-ingredients-chips');
+  const modalImageContainer = document.getElementById('modal-image-container');
+  const modalMealImage = document.getElementById('modal-meal-image');
+
+  function openMealDetailModal(meal) {
+    if (!mealDetailModal) return;
+
+    if (modalMealTitle) modalMealTitle.textContent = meal.title || 'Mahlzeit';
+    if (modalMealDatetime) modalMealDatetime.textContent = meal.full_datetime_formatted || meal.consumed_at;
+    if (modalMealCalories) modalMealCalories.textContent = `${Number(meal.calories || 0).toLocaleString('de-DE')} kcal`;
+    if (modalMealHealth) modalMealHealth.innerHTML = formatAiText(meal.health_rating || 'Keine Angabe');
+
+    if (modalIngredientsChips) {
+      modalIngredientsChips.innerHTML = '';
+      if (meal.ingredients) {
+        const ingredientsList = typeof meal.ingredients === 'string' ? meal.ingredients.split(',') : meal.ingredients;
+        ingredientsList.forEach((ing) => {
+          const clean = ing.trim();
+          if (clean) {
+            const chip = document.createElement('span');
+            chip.className = 'chip';
+            chip.textContent = clean;
+            modalIngredientsChips.appendChild(chip);
+          }
+        });
+      }
+    }
+
+    if (meal.image_url && modalMealImage && modalImageContainer) {
+      modalMealImage.src = meal.image_url;
+      modalImageContainer.style.display = 'block';
+    } else if (modalImageContainer) {
+      modalImageContainer.style.display = 'none';
+    }
+
+    mealDetailModal.style.display = 'flex';
+  }
+
+  function closeMealDetailModal() {
+    if (mealDetailModal) {
+      mealDetailModal.style.display = 'none';
+    }
+  }
+
+  if (btnCloseModal) {
+    btnCloseModal.addEventListener('click', () => {
+      closeMealDetailModal();
+    });
+  }
+
+  if (mealDetailModal) {
+    mealDetailModal.addEventListener('click', (e) => {
+      if (e.target === mealDetailModal) {
+        closeMealDetailModal();
+      }
     });
   }
 

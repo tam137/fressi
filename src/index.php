@@ -234,16 +234,141 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
     ];
 }
 
-$isAjaxRequest = ($_SERVER['REQUEST_METHOD'] === 'POST') && (
-    isset($_POST['ajax_upload']) ||
-    isset($_POST['action']) ||
-    (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+$isAjaxRequest = (
+    ($_SERVER['REQUEST_METHOD'] === 'POST' || $_SERVER['REQUEST_METHOD'] === 'GET') && (
+        isset($_POST['ajax_upload']) ||
+        isset($_POST['action']) ||
+        isset($_GET['action']) ||
+        (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+    )
 );
 
 if ($isAjaxRequest) {
     header('Content-Type: application/json');
 
-    $action = $_POST['action'] ?? 'upload_photo';
+    $action = $_REQUEST['action'] ?? 'upload_photo';
+
+    // Handler: Historie abrufen (7-Tage-Pagination)
+    if ($action === 'get_history') {
+        ensure_meals_table_exists($pdo);
+
+        $page = max(0, (int)($_REQUEST['page'] ?? 0));
+        $daysPerPage = 7;
+
+        // Base today timestamp (midnight)
+        $todayTimestamp = strtotime('today');
+
+        // Page 0 = today down to 6 days ago (7 days total)
+        $endDayOffset = $page * $daysPerPage;
+        $startDayOffset = ($page + 1) * $daysPerPage - 1;
+
+        $endTimestamp = strtotime("-{$endDayOffset} days", $todayTimestamp);
+        $startTimestamp = strtotime("-{$startDayOffset} days", $todayTimestamp);
+
+        $endDateStr = date('Y-m-d 23:59:59', $endTimestamp);
+        $startDateStr = date('Y-m-d 00:00:00', $startTimestamp);
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT id, account_id, consumed_at, title, image_filename, ai_model, ai_attempts, processing_time_ms, ingredients, health_rating, calories, created_at
+                FROM meals
+                WHERE account_id = :account_id
+                  AND consumed_at >= :start_date
+                  AND consumed_at <= :end_date
+                ORDER BY consumed_at DESC, id DESC
+            ");
+            $stmt->execute([
+                'account_id' => $_SESSION['user_id'],
+                'start_date' => $startDateStr,
+                'end_date' => $endDateStr
+            ]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Group meals by date (Y-m-d)
+            $mealsByDate = [];
+            foreach ($rows as $row) {
+                $dateKey = date('Y-m-d', strtotime($row['consumed_at']));
+                if (!isset($mealsByDate[$dateKey])) {
+                    $mealsByDate[$dateKey] = [];
+                }
+
+                $imgWebUrl = null;
+                if (!empty($row['image_filename'])) {
+                    $imgPath = __DIR__ . '/uploads/photos/' . $row['image_filename'];
+                    if (file_exists($imgPath)) {
+                        $imgWebUrl = 'uploads/photos/' . $row['image_filename'];
+                    }
+                }
+
+                $mealsByDate[$dateKey][] = [
+                    'id' => (int)$row['id'],
+                    'title' => $row['title'],
+                    'consumed_at' => $row['consumed_at'],
+                    'time_formatted' => date('H:i', strtotime($row['consumed_at'])),
+                    'full_datetime_formatted' => date('d.m.Y, H:i', strtotime($row['consumed_at'])) . ' Uhr',
+                    'calories' => (int)$row['calories'],
+                    'ingredients' => $row['ingredients'],
+                    'health_rating' => $row['health_rating'],
+                    'image_filename' => $row['image_filename'],
+                    'image_url' => $imgWebUrl
+                ];
+            }
+
+            // Build array for all 7 calendar days in range (newest first)
+            $germanWeekdays = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+            $daysList = [];
+
+            for ($d = $endDayOffset; $d <= $startDayOffset; $d++) {
+                $dayTs = strtotime("-{$d} days", $todayTimestamp);
+                $dateKey = date('Y-m-d', $dayTs);
+                $dayOfWeekNum = (int)date('w', $dayTs);
+                $weekdayName = $germanWeekdays[$dayOfWeekNum];
+                $dateFormatted = date('d.m.Y', $dayTs);
+
+                $dayMeals = $mealsByDate[$dateKey] ?? [];
+                $dayTotalCalories = 0;
+                foreach ($dayMeals as $m) {
+                    $dayTotalCalories += $m['calories'];
+                }
+
+                $daysList[] = [
+                    'date_key' => $dateKey,
+                    'date_formatted' => $dateFormatted,
+                    'weekday_name' => $weekdayName,
+                    'total_calories' => $dayTotalCalories,
+                    'meals' => $dayMeals
+                ];
+            }
+
+            // Check if there are older records prior to startDateStr
+            $checkStmt = $pdo->prepare("
+                SELECT COUNT(*) FROM meals
+                WHERE account_id = :account_id
+                  AND consumed_at < :start_date
+            ");
+            $checkStmt->execute([
+                'account_id' => $_SESSION['user_id'],
+                'start_date' => $startDateStr
+            ]);
+            $olderCount = (int)$checkStmt->fetchColumn();
+
+            echo json_encode([
+                'status' => 'success',
+                'page' => $page,
+                'days' => $daysList,
+                'has_more' => ($olderCount > 0)
+            ]);
+            exit;
+        } catch (Exception $e) {
+            error_log("Failed to fetch history: " . $e->getMessage());
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Fehler beim Laden der Historie.',
+                'error_detail' => $e->getMessage()
+            ]);
+            exit;
+        }
+    }
 
     // Handler 1: Refinement Loop (Nutzer hat Zutaten/Text geändert)
     if ($action === 'refine_summary') {
@@ -543,9 +668,22 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                 <div class="user-badge" title="Eingeloggt als <?php echo htmlspecialchars($user['username']); ?>">
                     <span>Hallo, <strong><?php echo htmlspecialchars(ucfirst($user['username'])); ?></strong></span>
                 </div>
-                <a href="logout.php" class="btn-logout" title="Abmelden">
-                    <span>Abmelden 🚪</span>
-                </a>
+                <div class="hamburger-menu-container">
+                    <button id="hamburger-btn" class="hamburger-btn" aria-label="Menü öffnen" aria-expanded="false" title="Menü">
+                        <span class="hamburger-icon">☰</span>
+                    </button>
+                    <div id="hamburger-dropdown" class="hamburger-dropdown" style="display: none;">
+                        <a href="#" id="menu-item-history" class="dropdown-item">
+                            <span class="dropdown-icon">📜</span>
+                            <span>History</span>
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        <a href="logout.php" class="dropdown-item dropdown-item-logout">
+                            <span class="dropdown-icon">🚪</span>
+                            <span>Abmelden</span>
+                        </a>
+                    </div>
+                </div>
                 <button id="theme-toggle" class="theme-toggle" title="Design-Modus umschalten">
                     🌙
                 </button>
@@ -674,8 +812,60 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                     </div>
                 </form>
             </div>
+
+            <!-- History Card (Hidden by default) -->
+            <div id="history-card" class="photo-card history-card" style="display: none;">
+                <div class="card-header history-header">
+                    <button id="btn-back-to-camera" class="btn-secondary btn-back-nav" title="Zurück zur Kamera">
+                        ← Kamera
+                    </button>
+                    <h1 class="card-title">Mahlzeiten-<span class="accent-text">Historie</span></h1>
+                </div>
+
+                <div id="history-list-container" class="history-list-container">
+                    <!-- Dynamic day blocks rendered here via JS -->
+                </div>
+
+                <div id="history-status" class="status-box" style="display: none;"></div>
+
+                <div class="history-actions">
+                    <button id="btn-load-more-history" class="btn-primary load-more-btn" style="display: none;">
+                        Mehr laden ⏳
+                    </button>
+                </div>
+            </div>
         </section>
     </main>
+
+    <!-- Meal Detail Modal -->
+    <div id="meal-detail-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <button id="btn-close-modal" class="modal-close-btn" title="Schließen">&times;</button>
+            <div class="modal-header">
+                <h2 id="modal-meal-title" class="modal-title">Mahlzeit Details</h2>
+                <div id="modal-meal-datetime" class="modal-subtitle">Datum & Uhrzeit</div>
+            </div>
+            <div class="modal-body">
+                <div id="modal-image-container" class="modal-image-container" style="display: none;">
+                    <img id="modal-meal-image" src="" alt="Foto der Mahlzeit" class="modal-meal-img">
+                </div>
+                <div class="modal-stat-grid">
+                    <div class="modal-stat-box">
+                        <span class="stat-label">Kalorien</span>
+                        <span id="modal-meal-calories" class="stat-value">0 kcal</span>
+                    </div>
+                    <div class="modal-stat-box">
+                        <span class="stat-label">Gesundheit</span>
+                        <span id="modal-meal-health" class="stat-value">-</span>
+                    </div>
+                </div>
+                <div class="modal-section">
+                    <h3>Zutaten</h3>
+                    <div id="modal-ingredients-chips" class="ingredients-chips"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Toast Container -->
     <div id="toast-container" class="toast-container"></div>
