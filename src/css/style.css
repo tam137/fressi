@@ -1274,17 +1274,21 @@ textarea.form-control {
 
 .modal-image-container {
   width: 100%;
+  height: 220px;
   max-height: 220px;
   border-radius: var(--radius-md);
   overflow: hidden;
   margin-bottom: 1rem;
   border: 1px solid var(--border-vintage);
+  background: var(--bg-secondary);
 }
 
 .modal-meal-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center center;
+  display: block;
 }
 
 .modal-section {
