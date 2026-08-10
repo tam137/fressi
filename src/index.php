@@ -248,6 +248,58 @@ if ($isAjaxRequest) {
 
     $action = $_REQUEST['action'] ?? 'upload_photo';
 
+    // Handler: Favoriten abrufen
+    if ($action === 'get_favorites') {
+        ensure_favorites_table_exists($pdo);
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT id, meal_id, title, image_filename, ingredients, health_rating, calories, consumed_at, created_at
+                FROM favorites
+                WHERE account_id = :account_id
+                ORDER BY created_at DESC
+            ");
+            $stmt->execute(['account_id' => $_SESSION['user_id']]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $favorites = [];
+            foreach ($rows as $row) {
+                $imgWebUrl = null;
+                if (!empty($row['image_filename'])) {
+                    $imgPath = __DIR__ . '/uploads/photos/' . $row['image_filename'];
+                    if (file_exists($imgPath)) {
+                        $imgWebUrl = 'uploads/photos/' . $row['image_filename'];
+                    }
+                }
+
+                $favorites[] = [
+                    'id' => (int)$row['id'],
+                    'meal_id' => (int)$row['meal_id'],
+                    'title' => $row['title'],
+                    'image_filename' => $row['image_filename'],
+                    'image_url' => $imgWebUrl,
+                    'ingredients' => $row['ingredients'],
+                    'health_rating' => $row['health_rating'],
+                    'calories' => (int)$row['calories'],
+                    'consumed_at' => $row['consumed_at']
+                ];
+            }
+
+            echo json_encode([
+                'status' => 'success',
+                'favorites' => $favorites
+            ]);
+            exit;
+        } catch (Exception $e) {
+            error_log("Failed to fetch favorites: " . $e->getMessage());
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Fehler beim Abrufen der Favorieten.'
+            ]);
+            exit;
+        }
+    }
+
     // Handler: Historie abrufen (7-Tage-Pagination)
     if ($action === 'get_history') {
         ensure_meals_table_exists($pdo);
@@ -873,6 +925,9 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                         <label for="photo-input-gallery" id="trigger-gallery-btn" class="btn-secondary gallery-trigger-btn">
                             Aus Galerie wählen 🖼️
                         </label>
+                        <button type="button" id="btn-select-favorite" class="btn-secondary select-favorite-btn">
+                            ⭐ Aus Favorieten wählen
+                        </button>
                     </div>
                 </div>
 
@@ -1023,6 +1078,22 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                 <button type="button" id="btn-modal-delete" class="btn-danger btn-modal-delete">
                     🗑️ Löschen
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Favorites Selection Modal -->
+    <div id="favorites-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card favorites-modal-card">
+            <button id="btn-close-favorites-modal" class="modal-close-btn" title="Schließen">&times;</button>
+            <div class="modal-header">
+                <h2 class="modal-title">⭐ Meine <span class="accent-text">Favorieten</span></h2>
+                <div class="modal-subtitle">Wähle eine gespeicherte Mahlzeit als Vorlage</div>
+            </div>
+            <div class="modal-body">
+                <div id="favorites-list-container" class="favorites-list-container">
+                    <!-- Dynamic compact favorite list items -->
+                </div>
             </div>
         </div>
     </div>

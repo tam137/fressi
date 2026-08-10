@@ -1387,6 +1387,98 @@ textarea.form-control {
   cursor: not-allowed;
 }
 
+/* Select Favorite Button in Dropzone */
+.select-favorite-btn {
+  margin-top: 0.75rem;
+  width: 100%;
+  border-color: rgba(241, 196, 15, 0.4);
+  background: var(--bg-secondary);
+}
+
+.select-favorite-btn:hover {
+  border-color: #f1c40f;
+  background: rgba(241, 196, 15, 0.1);
+}
+
+/* Compact Favorites Selection Modal List */
+.favorites-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.favorite-item-compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.8rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-vintage);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.favorite-item-compact:hover {
+  border-color: #f1c40f;
+  background: rgba(241, 196, 15, 0.08);
+  transform: translateY(-1px);
+}
+
+.fav-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.fav-item-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fav-item-ingredients {
+  font-size: 0.8rem;
+  color: var(--text-muted, #a0a0a0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fav-kcal-badge {
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.25rem 0.6rem;
+  background: rgba(230, 126, 34, 0.15);
+  color: #e67e22;
+  border-radius: 20px;
+  border: 1px solid rgba(230, 126, 34, 0.3);
+  white-space: nowrap;
+}
+
+.favorites-empty-msg,
+.favorites-loading-msg,
+.favorites-error-msg {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--text-muted, #a0a0a0);
+  font-size: 0.92rem;
+}
+
+.favorites-empty-msg p {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
 
 
 

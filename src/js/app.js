@@ -994,4 +994,130 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => toast.remove(), 300);
     }, 3500);
   }
+
+  // ==========================================
+  // Favorites Selection Modal Controller
+  // ==========================================
+  const btnSelectFavorite = document.getElementById('btn-select-favorite');
+  const favoritesModal = document.getElementById('favorites-modal');
+  const btnCloseFavoritesModal = document.getElementById('btn-close-favorites-modal');
+  const favoritesListContainer = document.getElementById('favorites-list-container');
+
+  function openFavoritesModal() {
+    if (!favoritesModal) return;
+    favoritesModal.style.display = 'flex';
+    loadFavoritesList();
+  }
+
+  function closeFavoritesModal() {
+    if (favoritesModal) {
+      favoritesModal.style.display = 'none';
+    }
+  }
+
+  if (btnSelectFavorite) {
+    btnSelectFavorite.addEventListener('click', () => {
+      openFavoritesModal();
+    });
+  }
+
+  if (btnCloseFavoritesModal) {
+    btnCloseFavoritesModal.addEventListener('click', () => {
+      closeFavoritesModal();
+    });
+  }
+
+  if (favoritesModal) {
+    favoritesModal.addEventListener('click', (e) => {
+      if (e.target === favoritesModal) {
+        closeFavoritesModal();
+      }
+    });
+  }
+
+  async function loadFavoritesList() {
+    if (!favoritesListContainer) return;
+    favoritesListContainer.innerHTML = '<div class="favorites-loading-msg">Favorieten werden geladen... ⏳</div>';
+
+    try {
+      const response = await fetch('index.php?action=get_favorites', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      const data = await response.json();
+
+      if (data.status === 'success' && Array.isArray(data.favorites) && data.favorites.length > 0) {
+        favoritesListContainer.innerHTML = '';
+        data.favorites.forEach((fav) => {
+          const itemEl = document.createElement('div');
+          itemEl.className = 'favorite-item-compact';
+
+          const calories = Number(fav.calories || 0).toLocaleString('de-DE');
+          let ingredientsText = 'Keine Zutaten angegeben';
+          if (fav.ingredients) {
+            if (typeof fav.ingredients === 'string') {
+              ingredientsText = fav.ingredients;
+            } else if (Array.isArray(fav.ingredients)) {
+              ingredientsText = fav.ingredients.join(', ');
+            }
+          }
+
+          itemEl.innerHTML = `
+            <div class="fav-item-main">
+              <div class="fav-item-title">${escapeHtml(fav.title || 'Mahlzeit')}</div>
+              <div class="fav-item-ingredients">${escapeHtml(ingredientsText)}</div>
+            </div>
+            <div class="fav-item-meta">
+              <span class="fav-kcal-badge">🔥 ${calories} kcal</span>
+            </div>
+          `;
+
+          itemEl.addEventListener('click', () => {
+            selectFavoriteAsTemplate(fav);
+          });
+
+          favoritesListContainer.appendChild(itemEl);
+        });
+      } else {
+        favoritesListContainer.innerHTML = `
+          <div class="favorites-empty-msg">
+            <p>Du hast bisher noch keine Favorieten gespeichert. ⭐</p>
+            <small>Du kannst Mahlzeiten in der Historie im Detail-Modal als Favoriet markieren.</small>
+          </div>
+        `;
+      }
+    } catch (err) {
+      console.error('Error fetching favorites:', err);
+      favoritesListContainer.innerHTML = '<div class="favorites-error-msg">Fehler beim Laden der Favorieten. ⚠️</div>';
+    }
+  }
+
+  function selectFavoriteAsTemplate(fav) {
+    closeFavoritesModal();
+
+    let ingredientsArr = [];
+    if (fav.ingredients) {
+      if (Array.isArray(fav.ingredients)) {
+        ingredientsArr = fav.ingredients;
+      } else if (typeof fav.ingredients === 'string') {
+        ingredientsArr = fav.ingredients.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    }
+
+    currentAnalysis = {
+      photoPath: fav.image_url ? fav.image_url : '',
+      title: fav.title || 'Mahlzeit',
+      ingredients: ingredientsArr,
+      healthRating: fav.health_rating || '',
+      baseCalories: parseInt(fav.calories || 0, 10),
+      currentCalories: parseInt(fav.calories || 0, 10),
+      portion: 100,
+      notes: '',
+      model: 'Favorit-Vorlage ⭐',
+      attempts: 1,
+      durationMs: 0
+    };
+
+    renderValidationView();
+    showToast('Favoriet als Vorlage geladen! ⭐');
+  }
 });
