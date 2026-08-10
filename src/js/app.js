@@ -1094,6 +1094,18 @@ document.addEventListener('DOMContentLoaded', () => {
   function selectFavoriteAsTemplate(fav) {
     closeFavoritesModal();
 
+    // Asynchronously update last_used_at timestamp on server so it moves to top next time
+    if (fav.id) {
+      const touchData = new FormData();
+      touchData.append('action', 'touch_favorite');
+      touchData.append('favorite_id', fav.id);
+      fetch('index.php', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: touchData
+      }).catch(err => console.error('Failed to update favorite timestamp:', err));
+    }
+
     let ingredientsArr = [];
     if (fav.ingredients) {
       if (Array.isArray(fav.ingredients)) {

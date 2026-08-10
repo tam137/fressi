@@ -254,10 +254,10 @@ if ($isAjaxRequest) {
 
         try {
             $stmt = $pdo->prepare("
-                SELECT id, meal_id, title, image_filename, ingredients, health_rating, calories, consumed_at, created_at
+                SELECT id, meal_id, title, image_filename, ingredients, health_rating, calories, consumed_at, created_at, last_used_at
                 FROM favorites
                 WHERE account_id = :account_id
-                ORDER BY created_at DESC
+                ORDER BY COALESCE(last_used_at, created_at) DESC, id DESC
             ");
             $stmt->execute(['account_id' => $_SESSION['user_id']]);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -674,9 +674,9 @@ if ($isAjaxRequest) {
                 }
 
                 $stmtInsFav = $pdo->prepare("
-                    INSERT INTO favorites (account_id, meal_id, title, image_filename, ingredients, health_rating, calories, consumed_at)
-                    VALUES (:account_id, :meal_id, :title, :image_filename, :ingredients, :health_rating, :calories, :consumed_at)
-                    ON CONFLICT (account_id, meal_id) DO NOTHING
+                    INSERT INTO favorites (account_id, meal_id, title, image_filename, ingredients, health_rating, calories, consumed_at, last_used_at)
+                    VALUES (:account_id, :meal_id, :title, :image_filename, :ingredients, :health_rating, :calories, :consumed_at, CURRENT_TIMESTAMP)
+                    ON CONFLICT (account_id, meal_id) DO UPDATE SET last_used_at = CURRENT_TIMESTAMP
                 ");
                 $stmtInsFav->execute([
                     'account_id' => $_SESSION['user_id'],
@@ -703,6 +703,36 @@ if ($isAjaxRequest) {
                 'message' => 'Fehler beim Speichern des Favoriten.',
                 'error_detail' => $e->getMessage()
             ]);
+            exit;
+        }
+    }
+
+    // Handler: Favorit als verwendet markieren
+    if ($action === 'touch_favorite') {
+        ensure_favorites_table_exists($pdo);
+
+        $favId = (int)($_POST['favorite_id'] ?? ($_POST['id'] ?? 0));
+        $mealId = (int)($_POST['meal_id'] ?? 0);
+
+        if ($favId <= 0 && $mealId <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Ungültige ID.']);
+            exit;
+        }
+
+        try {
+            if ($favId > 0) {
+                $stmt = $pdo->prepare("UPDATE favorites SET last_used_at = CURRENT_TIMESTAMP WHERE id = :id AND account_id = :account_id");
+                $stmt->execute(['id' => $favId, 'account_id' => $_SESSION['user_id']]);
+            } else {
+                $stmt = $pdo->prepare("UPDATE favorites SET last_used_at = CURRENT_TIMESTAMP WHERE meal_id = :meal_id AND account_id = :account_id");
+                $stmt->execute(['meal_id' => $mealId, 'account_id' => $_SESSION['user_id']]);
+            }
+
+            echo json_encode(['status' => 'success']);
+            exit;
+        } catch (Exception $e) {
+            error_log("Failed to touch favorite: " . $e->getMessage());
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
             exit;
         }
     }

@@ -234,10 +234,11 @@ function ensure_meals_table_exists($pdo) {
  */
 function ensure_favorites_table_exists($pdo) {
     try {
-        $pdo->query("SELECT 1 FROM favorites LIMIT 0");
+        // Fast path: ensure column exists
+        $pdo->query("SELECT last_used_at FROM favorites LIMIT 0");
         return true;
     } catch (Exception $e) {
-        // Table does not exist or is not accessible yet, proceed to create
+        // Table or column missing, proceed to create/alter
     }
 
     try {
@@ -253,11 +254,21 @@ function ensure_favorites_table_exists($pdo) {
                 calories INTEGER NOT NULL DEFAULT 0,
                 consumed_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                last_used_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 CONSTRAINT unique_user_meal_fav UNIQUE (account_id, meal_id)
             );
         ";
         $pdo->exec($createSql);
+
+        try {
+            $pdo->exec("ALTER TABLE favorites ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;");
+            $pdo->exec("UPDATE favorites SET last_used_at = created_at WHERE last_used_at IS NULL;");
+        } catch (Exception $ex) {
+            error_log("Failed to alter favorites table column (last_used_at): " . $ex->getMessage());
+        }
+
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_favorites_user_meal ON favorites(account_id, meal_id);");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_favorites_last_used ON favorites(account_id, last_used_at DESC);");
         return true;
     } catch (PDOException $e) {
         error_log("Failed to ensure favorites table exists: " . $e->getMessage());
