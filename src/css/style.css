@@ -177,21 +177,10 @@ button {
 }
 
 .brand-logo .logo-icon {
-  width: 36px;
-  height: 36px;
-  background: var(--bg-secondary);
-  border: 2px solid var(--accent-green);
-  border-radius: var(--radius-full);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent-green);
-}
-
-.brand-logo .logo-icon svg {
-  width: 20px;
-  height: 20px;
-  fill: currentColor;
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
 }
 
 .nav-actions {

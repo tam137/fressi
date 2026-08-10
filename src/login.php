@@ -128,14 +128,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .login-logo .logo-icon {
             width: 52px;
             height: 52px;
-            background: var(--bg-secondary);
-            border: 2px solid var(--accent-green);
-            border-radius: var(--radius-full);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.6rem;
-            box-shadow: var(--shadow-sm);
+            object-fit: contain;
+            border-radius: var(--radius-md);
         }
 
         .login-title {
@@ -266,7 +260,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="login-card">
             <div class="login-header">
                 <div class="login-logo">
-                    <div class="logo-icon">🍲</div>
+                    <img src="apple-touch-icon.png" alt="fressi" class="logo-icon">
                 </div>
                 <h1 class="login-title">Willkommen zurück</h1>
                 <p class="login-subtitle">Bitte melde dich an, um fortzufahren.</p>

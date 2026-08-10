@@ -535,7 +535,7 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
     <header>
         <nav class="navbar">
             <a href="#" class="brand-logo">
-                <div class="logo-icon">📷</div>
+                <img src="apple-touch-icon.png" alt="fressi" class="logo-icon">
                 <span>fressi</span>
             </a>
 
