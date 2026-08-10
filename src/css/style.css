@@ -1122,16 +1122,17 @@ textarea.form-control {
 
 .day-total-badge {
   font-size: 0.85rem;
-  padding: 0.2rem 0.6rem;
+  padding: 0.25rem 0.65rem;
   border-radius: var(--radius-full);
-  background: var(--accent-olive);
-  color: #ffffff;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-vintage);
   font-weight: 600;
 }
 
 .day-total-badge.empty-badge {
-  background: var(--text-muted);
-  opacity: 0.7;
+  color: var(--text-muted);
+  opacity: 0.75;
 }
 
 .history-day-divider {
@@ -1286,44 +1287,39 @@ textarea.form-control {
   object-fit: cover;
 }
 
-.modal-stat-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.modal-stat-box {
-  background: var(--bg-secondary);
-  padding: 0.75rem;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-vintage);
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.modal-stat-box .stat-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary);
-}
-
-.modal-stat-box .stat-value {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
 .modal-section {
   margin-top: 1rem;
 }
 
 .modal-section h3 {
-  font-size: 0.95rem;
-  margin-bottom: 0.5rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+}
+
+.modal-health-box {
+  font-size: 0.92rem;
+  line-height: 1.5;
+  padding: 0.75rem 0.9rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-vintage);
+  border-radius: var(--radius-md);
   color: var(--text-primary);
 }
+
+.modal-calories-box {
+  font-size: 1.05rem;
+  font-weight: 600;
+  padding: 0.6rem 0.9rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-vintage);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  display: inline-block;
+  min-width: 120px;
+}
+
 
 

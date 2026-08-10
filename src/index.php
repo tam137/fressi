@@ -849,18 +849,16 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                 <div id="modal-image-container" class="modal-image-container" style="display: none;">
                     <img id="modal-meal-image" src="" alt="Foto der Mahlzeit" class="modal-meal-img">
                 </div>
-                <div class="modal-stat-grid">
-                    <div class="modal-stat-box">
-                        <span class="stat-label">Kalorien</span>
-                        <span id="modal-meal-calories" class="stat-value">0 kcal</span>
-                    </div>
-                    <div class="modal-stat-box">
-                        <span class="stat-label">Gesundheit</span>
-                        <span id="modal-meal-health" class="stat-value">-</span>
-                    </div>
+                <div class="modal-section">
+                    <h3>💚 Wertigkeit & Wohlbefinden</h3>
+                    <div id="modal-meal-health" class="health-rating-box modal-health-box">-</div>
                 </div>
                 <div class="modal-section">
-                    <h3>Zutaten</h3>
+                    <h3>🔥 Kalorien</h3>
+                    <div id="modal-meal-calories" class="modal-calories-box">0 kcal</div>
+                </div>
+                <div class="modal-section">
+                    <h3>🥗 Zutaten & Bestandteile</h3>
                     <div id="modal-ingredients-chips" class="ingredients-chips"></div>
                 </div>
             </div>
