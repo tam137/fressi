@@ -125,8 +125,8 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
 
     $base64Image = base64_encode($imageData);
 
-    $models = ['gemini-3.6-flash', 'gemini-3.5-flash'];
-    $maxPasses = 2;
+    $models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'];
+    $maxPasses = 3;
     $attemptCount = 0;
     $lastError = 'Unbekannter Fehler';
     $startTime = microtime(true);
@@ -136,7 +136,7 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
             $attemptCount++;
 
             if ($attemptCount > 1) {
-                sleep(1);
+                sleep(2);
             }
 
             $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . $model . ':generateContent?key=' . urlencode($apiKey);
