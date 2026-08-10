@@ -225,5 +225,44 @@ function ensure_meals_table_exists($pdo) {
         return false;
     }
 }
+
+/**
+ * Ensure that the favorites table exists in PostgreSQL.
+ *
+ * @param PDO $pdo
+ * @return bool Returns true if table exists or was created successfully, false on error.
+ */
+function ensure_favorites_table_exists($pdo) {
+    try {
+        $pdo->query("SELECT 1 FROM favorites LIMIT 0");
+        return true;
+    } catch (Exception $e) {
+        // Table does not exist or is not accessible yet, proceed to create
+    }
+
+    try {
+        $createSql = "
+            CREATE TABLE IF NOT EXISTS favorites (
+                id BIGSERIAL PRIMARY KEY,
+                account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                meal_id BIGINT NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
+                title VARCHAR(255) NOT NULL DEFAULT 'Mahlzeit',
+                image_filename VARCHAR(255) DEFAULT '',
+                ingredients TEXT,
+                health_rating TEXT,
+                calories INTEGER NOT NULL DEFAULT 0,
+                consumed_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT unique_user_meal_fav UNIQUE (account_id, meal_id)
+            );
+        ";
+        $pdo->exec($createSql);
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_favorites_user_meal ON favorites(account_id, meal_id);");
+        return true;
+    } catch (PDOException $e) {
+        error_log("Failed to ensure favorites table exists: " . $e->getMessage());
+        return false;
+    }
+}
 ?>
 

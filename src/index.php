@@ -251,6 +251,7 @@ if ($isAjaxRequest) {
     // Handler: Historie abrufen (7-Tage-Pagination)
     if ($action === 'get_history') {
         ensure_meals_table_exists($pdo);
+        ensure_favorites_table_exists($pdo);
 
         $page = max(0, (int)($_REQUEST['page'] ?? 0));
         $daysPerPage = 7;
@@ -270,12 +271,14 @@ if ($isAjaxRequest) {
 
         try {
             $stmt = $pdo->prepare("
-                SELECT id, account_id, consumed_at, title, image_filename, ai_model, ai_attempts, processing_time_ms, ingredients, health_rating, calories, created_at
-                FROM meals
-                WHERE account_id = :account_id
-                  AND consumed_at >= :start_date
-                  AND consumed_at <= :end_date
-                ORDER BY consumed_at DESC, id DESC
+                SELECT m.id, m.account_id, m.consumed_at, m.title, m.image_filename, m.ai_model, m.ai_attempts, m.processing_time_ms, m.ingredients, m.health_rating, m.calories, m.created_at,
+                       (CASE WHEN f.id IS NOT NULL THEN 1 ELSE 0 END) AS is_favorite
+                FROM meals m
+                LEFT JOIN favorites f ON f.meal_id = m.id AND f.account_id = m.account_id
+                WHERE m.account_id = :account_id
+                  AND m.consumed_at >= :start_date
+                  AND m.consumed_at <= :end_date
+                ORDER BY m.consumed_at DESC, m.id DESC
             ");
             $stmt->execute([
                 'account_id' => $_SESSION['user_id'],
@@ -310,7 +313,8 @@ if ($isAjaxRequest) {
                     'ingredients' => $row['ingredients'],
                     'health_rating' => $row['health_rating'],
                     'image_filename' => $row['image_filename'],
-                    'image_url' => $imgWebUrl
+                    'image_url' => $imgWebUrl,
+                    'is_favorite' => (bool)$row['is_favorite']
                 ];
             }
 
@@ -495,6 +499,156 @@ if ($isAjaxRequest) {
             echo json_encode([
                 'status' => 'error',
                 'message' => 'Fehler beim Speichern der Mahlzeit in der Datenbank.',
+                'error_detail' => $e->getMessage()
+            ]);
+            exit;
+        }
+    }
+
+    // Handler: Mahlzeit löschen
+    if ($action === 'delete_meal') {
+        ensure_meals_table_exists($pdo);
+        ensure_favorites_table_exists($pdo);
+
+        $mealId = (int)($_POST['meal_id'] ?? 0);
+        if ($mealId <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Ungültige Mahlzeiten-ID.']);
+            exit;
+        }
+
+        try {
+            $stmtFetch = $pdo->prepare("SELECT image_filename FROM meals WHERE id = :id AND account_id = :account_id");
+            $stmtFetch->execute([
+                'id' => $mealId,
+                'account_id' => $_SESSION['user_id']
+            ]);
+            $meal = $stmtFetch->fetch();
+
+            if (!$meal) {
+                echo json_encode(['status' => 'error', 'message' => 'Mahlzeit nicht gefunden oder keine Berechtigung.']);
+                exit;
+            }
+
+            $imageFilename = $meal['image_filename'] ?? '';
+
+            $stmtDelete = $pdo->prepare("DELETE FROM meals WHERE id = :id AND account_id = :account_id");
+            $stmtDelete->execute([
+                'id' => $mealId,
+                'account_id' => $_SESSION['user_id']
+            ]);
+
+            if (!empty($imageFilename)) {
+                $stmtCheckImg = $pdo->prepare("
+                    SELECT (
+                        (SELECT COUNT(*) FROM meals WHERE image_filename = :img1) +
+                        (SELECT COUNT(*) FROM favorites WHERE image_filename = :img2)
+                    ) AS ref_count
+                ");
+                $stmtCheckImg->execute([
+                    'img1' => $imageFilename,
+                    'img2' => $imageFilename
+                ]);
+                $refRow = $stmtCheckImg->fetch();
+                if (empty($refRow['ref_count']) || (int)$refRow['ref_count'] === 0) {
+                    $imgPath = __DIR__ . '/uploads/photos/' . $imageFilename;
+                    if (file_exists($imgPath)) {
+                        @unlink($imgPath);
+                    }
+                }
+            }
+
+            echo json_encode([
+                'status' => 'success',
+                'message' => 'Mahlzeit erfolgreich gelöscht.'
+            ]);
+            exit;
+        } catch (Exception $e) {
+            error_log("Failed to delete meal: " . $e->getMessage());
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Fehler beim Löschen der Mahlzeit.',
+                'error_detail' => $e->getMessage()
+            ]);
+            exit;
+        }
+    }
+
+    // Handler: Favoriten umschalten (Toggle)
+    if ($action === 'toggle_favorite') {
+        // Server-Schutz: 1 Sekunde Verzögerung
+        sleep(1);
+
+        ensure_meals_table_exists($pdo);
+        ensure_favorites_table_exists($pdo);
+
+        $mealId = (int)($_POST['meal_id'] ?? 0);
+        if ($mealId <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Ungültige Mahlzeiten-ID.']);
+            exit;
+        }
+
+        try {
+            $stmtCheck = $pdo->prepare("SELECT id FROM favorites WHERE account_id = :account_id AND meal_id = :meal_id");
+            $stmtCheck->execute([
+                'account_id' => $_SESSION['user_id'],
+                'meal_id' => $mealId
+            ]);
+            $favRow = $stmtCheck->fetch();
+
+            if ($favRow) {
+                $stmtDelFav = $pdo->prepare("DELETE FROM favorites WHERE account_id = :account_id AND meal_id = :meal_id");
+                $stmtDelFav->execute([
+                    'account_id' => $_SESSION['user_id'],
+                    'meal_id' => $mealId
+                ]);
+
+                echo json_encode([
+                    'status' => 'success',
+                    'is_favorite' => false,
+                    'message' => 'Mahlzeit aus Favorieten entfernt.'
+                ]);
+                exit;
+            } else {
+                $stmtMeal = $pdo->prepare("SELECT title, image_filename, ingredients, health_rating, calories, consumed_at FROM meals WHERE id = :id AND account_id = :account_id");
+                $stmtMeal->execute([
+                    'id' => $mealId,
+                    'account_id' => $_SESSION['user_id']
+                ]);
+                $mealData = $stmtMeal->fetch();
+
+                if (!$mealData) {
+                    echo json_encode(['status' => 'error', 'message' => 'Mahlzeit nicht gefunden.']);
+                    exit;
+                }
+
+                $stmtInsFav = $pdo->prepare("
+                    INSERT INTO favorites (account_id, meal_id, title, image_filename, ingredients, health_rating, calories, consumed_at)
+                    VALUES (:account_id, :meal_id, :title, :image_filename, :ingredients, :health_rating, :calories, :consumed_at)
+                    ON CONFLICT (account_id, meal_id) DO NOTHING
+                ");
+                $stmtInsFav->execute([
+                    'account_id' => $_SESSION['user_id'],
+                    'meal_id' => $mealId,
+                    'title' => $mealData['title'] ?? 'Mahlzeit',
+                    'image_filename' => $mealData['image_filename'] ?? '',
+                    'ingredients' => $mealData['ingredients'] ?? '',
+                    'health_rating' => $mealData['health_rating'] ?? '',
+                    'calories' => (int)($mealData['calories'] ?? 0),
+                    'consumed_at' => $mealData['consumed_at'] ?? date('Y-m-d H:i:sP')
+                ]);
+
+                echo json_encode([
+                    'status' => 'success',
+                    'is_favorite' => true,
+                    'message' => 'Mahlzeit zu Favorieten hinzugefügt.'
+                ]);
+                exit;
+            }
+        } catch (Exception $e) {
+            error_log("Failed to toggle favorite: " . $e->getMessage());
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Fehler beim Speichern des Favoriten.',
                 'error_detail' => $e->getMessage()
             ]);
             exit;
@@ -861,6 +1015,14 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                     <h3>🥗 Zutaten & Bestandteile</h3>
                     <div id="modal-ingredients-chips" class="ingredients-chips"></div>
                 </div>
+            </div>
+            <div class="modal-footer-actions">
+                <button type="button" id="btn-modal-favorite" class="btn-secondary btn-modal-fav">
+                    <span id="modal-fav-icon">☆</span> Favorieten
+                </button>
+                <button type="button" id="btn-modal-delete" class="btn-danger btn-modal-delete">
+                    🗑️ Löschen
+                </button>
             </div>
         </div>
     </div>

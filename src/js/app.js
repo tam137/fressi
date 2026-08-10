@@ -704,7 +704,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const mealKcal = Number(meal.calories || 0).toLocaleString('de-DE');
           const jsonStr = escapeHtml(JSON.stringify(meal));
           html += `
-            <div class="history-meal-item" data-meal='${jsonStr}'>
+            <div class="history-meal-item" data-meal-id="${meal.id}" data-meal='${jsonStr}'>
               <div class="meal-item-title">${escapeHtml(meal.title || 'Mahlzeit')}</div>
               <div class="meal-item-sub">
                 <span>⏰ ${escapeHtml(meal.time_formatted)} Uhr</span>
@@ -768,14 +768,33 @@ document.addEventListener('DOMContentLoaded', () => {
   const modalIngredientsChips = document.getElementById('modal-ingredients-chips');
   const modalImageContainer = document.getElementById('modal-image-container');
   const modalMealImage = document.getElementById('modal-meal-image');
+  const btnModalFavorite = document.getElementById('btn-modal-favorite');
+  const btnModalDelete = document.getElementById('btn-modal-delete');
+  const modalFavIcon = document.getElementById('modal-fav-icon');
+
+  let currentActiveMeal = null;
+
+  function updateFavoriteButtonState(isFavorite) {
+    if (!btnModalFavorite) return;
+    if (isFavorite) {
+      btnModalFavorite.classList.add('is-favorite');
+      if (modalFavIcon) modalFavIcon.textContent = '⭐';
+    } else {
+      btnModalFavorite.classList.remove('is-favorite');
+      if (modalFavIcon) modalFavIcon.textContent = '☆';
+    }
+  }
 
   function openMealDetailModal(meal) {
     if (!mealDetailModal) return;
+    currentActiveMeal = meal;
 
     if (modalMealTitle) modalMealTitle.textContent = meal.title || 'Mahlzeit';
     if (modalMealDatetime) modalMealDatetime.textContent = meal.full_datetime_formatted || meal.consumed_at;
     if (modalMealCalories) modalMealCalories.textContent = `${Number(meal.calories || 0).toLocaleString('de-DE')} kcal`;
     if (modalMealHealth) modalMealHealth.innerHTML = formatAiText(meal.health_rating || 'Keine Angabe');
+
+    updateFavoriteButtonState(!!meal.is_favorite);
 
     if (modalIngredientsChips) {
       modalIngredientsChips.innerHTML = '';
@@ -807,6 +826,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (mealDetailModal) {
       mealDetailModal.style.display = 'none';
     }
+    currentActiveMeal = null;
   }
 
   if (btnCloseModal) {
@@ -819,6 +839,112 @@ document.addEventListener('DOMContentLoaded', () => {
     mealDetailModal.addEventListener('click', (e) => {
       if (e.target === mealDetailModal) {
         closeMealDetailModal();
+      }
+    });
+  }
+
+  // Favorite button action listener
+  if (btnModalFavorite) {
+    btnModalFavorite.addEventListener('click', async () => {
+      if (!currentActiveMeal || !currentActiveMeal.id) return;
+
+      btnModalFavorite.disabled = true;
+
+      try {
+        const formData = new FormData();
+        formData.append('action', 'toggle_favorite');
+        formData.append('meal_id', currentActiveMeal.id);
+
+        const response = await fetch('index.php', {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: formData
+        });
+
+        const result = await response.json();
+        if (result.status === 'success') {
+          currentActiveMeal.is_favorite = result.is_favorite;
+          updateFavoriteButtonState(result.is_favorite);
+          showToast(result.message || (result.is_favorite ? 'Zu Favorieten hinzugefügt. ⭐' : 'Aus Favorieten entfernt.'));
+
+          // Update meal dataset in DOM if present
+          const mealEl = document.querySelector(`.history-meal-item[data-meal-id="${currentActiveMeal.id}"]`);
+          if (mealEl) {
+            try {
+              const dataObj = JSON.parse(mealEl.dataset.meal);
+              dataObj.is_favorite = result.is_favorite;
+              mealEl.dataset.meal = JSON.stringify(dataObj);
+            } catch (e) {
+              console.error('Error updating meal dataset', e);
+            }
+          }
+        } else {
+          showToast(result.message || 'Fehler beim Ändern des Favoriten-Status. ⚠️');
+        }
+      } catch (err) {
+        console.error('Error toggling favorite:', err);
+        showToast('Verbindungsfehler beim Verarbeiten! ❌');
+      } finally {
+        btnModalFavorite.disabled = false;
+      }
+    });
+  }
+
+  // Delete button action listener
+  if (btnModalDelete) {
+    btnModalDelete.addEventListener('click', async () => {
+      if (!currentActiveMeal || !currentActiveMeal.id) return;
+
+      const confirmDelete = confirm('Möchtest du diese Mahlzeit wirklich löschen?');
+      if (!confirmDelete) return;
+
+      btnModalDelete.disabled = true;
+
+      try {
+        const formData = new FormData();
+        formData.append('action', 'delete_meal');
+        formData.append('meal_id', currentActiveMeal.id);
+
+        const response = await fetch('index.php', {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          body: formData
+        });
+
+        const result = await response.json();
+        if (result.status === 'success') {
+          const deletedMealId = currentActiveMeal.id;
+          closeMealDetailModal();
+          showToast('Mahlzeit wurde gelöscht. 🗑️');
+
+          // Remove element from DOM history list
+          const mealEl = document.querySelector(`.history-meal-item[data-meal-id="${deletedMealId}"]`);
+          if (mealEl) {
+            const dayBlock = mealEl.closest('.history-day-block');
+            mealEl.remove();
+
+            if (dayBlock) {
+              const remainingItems = dayBlock.querySelectorAll('.history-meal-item');
+              if (remainingItems.length === 0) {
+                const emptyMsg = document.createElement('div');
+                emptyMsg.className = 'history-empty-day-msg';
+                emptyMsg.textContent = 'Keine Einträge für diesen Tag';
+                dayBlock.appendChild(emptyMsg);
+              }
+            }
+          }
+        } else {
+          showToast(result.message || 'Fehler beim Löschen der Mahlzeit. ⚠️');
+        }
+      } catch (err) {
+        console.error('Error deleting meal:', err);
+        showToast('Verbindungsfehler beim Löschen! ❌');
+      } finally {
+        btnModalDelete.disabled = false;
       }
     });
   }
