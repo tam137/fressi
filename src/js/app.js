@@ -47,6 +47,50 @@ document.addEventListener('DOMContentLoaded', () => {
   const fieldNotes = document.getElementById('field-notes');
   const btnSave = document.getElementById('btn-save');
   const btnDiscard = document.getElementById('btn-discard');
+  const brandLogo = document.querySelector('.brand-logo');
+
+  // ==========================================
+  // Navigation & Browser History Controller
+  // ==========================================
+  function getCurrentViewName() {
+    if (historyCard && historyCard.style.display === 'block') return 'history';
+    if (validationCard && validationCard.style.display === 'block') return 'validation';
+    return 'photo';
+  }
+
+  // Initialize base browser history state on load
+  if (window.history && window.history.replaceState) {
+    window.history.replaceState({ view: 'photo', modal: null }, '');
+  }
+
+  // Global popstate event handler for Mobile Back Button
+  window.addEventListener('popstate', (e) => {
+    // 1. Close Hamburger dropdown if open
+    if (hamburgerDropdown && hamburgerDropdown.style.display === 'block') {
+      closeHamburgerDropdown(false);
+      return;
+    }
+    // 2. Close Meal Detail modal if open
+    if (mealDetailModal && mealDetailModal.style.display === 'flex') {
+      closeMealDetailModal(false);
+      return;
+    }
+    // 3. Close Favorites modal if open
+    if (favoritesModal && favoritesModal.style.display === 'flex') {
+      closeFavoritesModal(false);
+      return;
+    }
+    // 4. Close/discard Validation Card if open -> return to Photo Mode
+    if (validationCard && validationCard.style.display === 'block') {
+      resetValidationStateAndShowPhotoView(false);
+      return;
+    }
+    // 5. Return to Photo Mode if in History Card
+    if (historyCard && historyCard.style.display === 'block') {
+      showCameraView(false);
+      return;
+    }
+  });
 
   // Analysis State
   let currentAnalysis = {
@@ -252,7 +296,14 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.remove('is-photo-mode');
     document.body.classList.add('is-validation-mode');
     if (photoCard) photoCard.style.display = 'none';
+    if (historyCard) historyCard.style.display = 'none';
     if (validationCard) validationCard.style.display = 'block';
+
+    if (pushState && window.history && window.history.pushState) {
+      if (!window.history.state || window.history.state.view !== 'validation') {
+        window.history.pushState({ view: 'validation', modal: null }, '');
+      }
+    }
   }
 
   // Render Ingredients Chips
@@ -415,6 +466,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (validationCard) validationCard.style.display = 'none';
             if (photoCard) photoCard.style.display = 'block';
             hideStatus();
+            if (window.history && window.history.replaceState) {
+              window.history.replaceState({ view: 'photo', modal: null }, '');
+            }
           } else {
             const errorMsg = saveResult.message || 'Unbekannter Fehler';
             const detail = saveResult.error_detail ? ` (${saveResult.error_detail})` : '';
@@ -510,32 +564,51 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function resetValidationStateAndShowPhotoView(triggerHistoryBack = true) {
+    currentAnalysis = {
+      photoPath: '',
+      title: '',
+      ingredients: [],
+      healthRating: '',
+      baseCalories: 0,
+      currentCalories: 0,
+      portion: 100,
+      notes: '',
+      model: '',
+      attempts: 0,
+      durationMs: 0
+    };
+
+    resetAiReanalysisState();
+    renderAiModelInfo();
+    document.body.classList.remove('is-validation-mode');
+    document.body.classList.add('is-photo-mode');
+    if (validationCard) validationCard.style.display = 'none';
+    if (historyCard) historyCard.style.display = 'none';
+    if (photoCard) photoCard.style.display = 'block';
+    hideStatus();
+
+    if (triggerHistoryBack && window.history && window.history.state && window.history.state.view === 'validation') {
+      window.history.back();
+    }
+  }
+
   // Discard Button Click
   if (btnDiscard) {
     btnDiscard.addEventListener('click', () => {
-      // Reset state and return to camera trigger screen
-      currentAnalysis = {
-        photoPath: '',
-        title: '',
-        ingredients: [],
-        healthRating: '',
-        baseCalories: 0,
-        currentCalories: 0,
-        portion: 100,
-        notes: '',
-        model: '',
-        attempts: 0,
-        durationMs: 0
-      };
-
-      resetAiReanalysisState();
-      renderAiModelInfo();
-      document.body.classList.remove('is-validation-mode');
-      document.body.classList.add('is-photo-mode');
-      if (validationCard) validationCard.style.display = 'none';
-      if (photoCard) photoCard.style.display = 'block';
-      hideStatus();
+      resetValidationStateAndShowPhotoView(true);
       showToast('Analyse verworfen. 🗑️');
+    });
+  }
+
+  // Brand Logo Click (Header Navigation)
+  if (brandLogo) {
+    brandLogo.addEventListener('click', (e) => {
+      e.preventDefault();
+      closeHamburgerDropdown(false);
+      closeMealDetailModal(false);
+      closeFavoritesModal(false);
+      showCameraView(true);
     });
   }
 
@@ -551,31 +624,40 @@ document.addEventListener('DOMContentLoaded', () => {
       e.stopPropagation();
       const isVisible = hamburgerDropdown.style.display === 'block';
       if (isVisible) {
-        closeHamburgerDropdown();
+        closeHamburgerDropdown(true);
       } else {
-        openHamburgerDropdown();
+        openHamburgerDropdown(true);
       }
     });
 
     document.addEventListener('click', (e) => {
       if (!hamburgerDropdown.contains(e.target) && !hamburgerBtn.contains(e.target)) {
-        closeHamburgerDropdown();
+        closeHamburgerDropdown(true);
       }
     });
   }
 
-  function openHamburgerDropdown() {
+  function openHamburgerDropdown(pushState = true) {
     if (!hamburgerDropdown || !hamburgerBtn) return;
     hamburgerDropdown.style.display = 'block';
     hamburgerBtn.classList.add('active');
     hamburgerBtn.setAttribute('aria-expanded', 'true');
+
+    if (pushState && window.history && window.history.pushState) {
+      window.history.pushState({ view: getCurrentViewName(), modal: 'hamburger' }, '');
+    }
   }
 
-  function closeHamburgerDropdown() {
+  function closeHamburgerDropdown(triggerHistoryBack = true) {
     if (!hamburgerDropdown || !hamburgerBtn) return;
+    const isVisible = hamburgerDropdown.style.display === 'block';
     hamburgerDropdown.style.display = 'none';
     hamburgerBtn.classList.remove('active');
     hamburgerBtn.setAttribute('aria-expanded', 'false');
+
+    if (isVisible && triggerHistoryBack && window.history && window.history.state && window.history.state.modal === 'hamburger') {
+      window.history.back();
+    }
   }
 
   // ==========================================
@@ -590,21 +672,33 @@ document.addEventListener('DOMContentLoaded', () => {
   let historyPage = 0;
   let historyLoadedInitial = false;
 
-  function showCameraView() {
+  function showCameraView(pushState = true) {
     if (historyCard) historyCard.style.display = 'none';
     if (validationCard) validationCard.style.display = 'none';
     if (photoCard) photoCard.style.display = 'block';
     document.body.classList.remove('is-validation-mode');
     document.body.classList.add('is-photo-mode');
+
+    if (pushState && window.history) {
+      if (window.history.state && (window.history.state.view !== 'photo' || window.history.state.modal)) {
+        window.history.back();
+      }
+    }
   }
 
-  function showHistoryView() {
+  function showHistoryView(pushState = true) {
     if (photoCard) photoCard.style.display = 'none';
     if (validationCard) validationCard.style.display = 'none';
     if (historyCard) historyCard.style.display = 'block';
 
     document.body.classList.remove('is-photo-mode');
     document.body.classList.remove('is-validation-mode');
+
+    if (pushState && window.history && window.history.pushState) {
+      if (!window.history.state || window.history.state.view !== 'history') {
+        window.history.pushState({ view: 'history', modal: null }, '');
+      }
+    }
 
     if (!historyLoadedInitial) {
       historyPage = 0;
@@ -616,14 +710,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (menuItemHistory) {
     menuItemHistory.addEventListener('click', (e) => {
       e.preventDefault();
-      closeHamburgerDropdown();
-      showHistoryView();
+      closeHamburgerDropdown(false);
+      showHistoryView(true);
     });
   }
 
   if (btnBackToCamera) {
     btnBackToCamera.addEventListener('click', () => {
-      showCameraView();
+      showCameraView(true);
     });
   }
 
@@ -820,25 +914,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     mealDetailModal.style.display = 'flex';
+
+    if (pushState && window.history && window.history.pushState) {
+      window.history.pushState({ view: getCurrentViewName(), modal: 'meal-detail', mealId: meal.id }, '');
+    }
   }
 
-  function closeMealDetailModal() {
-    if (mealDetailModal) {
-      mealDetailModal.style.display = 'none';
-    }
+  function closeMealDetailModal(triggerHistoryBack = true) {
+    if (!mealDetailModal) return;
+    const isVisible = mealDetailModal.style.display === 'flex';
+    mealDetailModal.style.display = 'none';
     currentActiveMeal = null;
+
+    if (isVisible && triggerHistoryBack && window.history && window.history.state && window.history.state.modal === 'meal-detail') {
+      window.history.back();
+    }
   }
 
   if (btnCloseModal) {
     btnCloseModal.addEventListener('click', () => {
-      closeMealDetailModal();
+      closeMealDetailModal(true);
     });
   }
 
   if (mealDetailModal) {
     mealDetailModal.addEventListener('click', (e) => {
       if (e.target === mealDetailModal) {
-        closeMealDetailModal();
+        closeMealDetailModal(true);
       }
     });
   }
@@ -1003,34 +1105,42 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnCloseFavoritesModal = document.getElementById('btn-close-favorites-modal');
   const favoritesListContainer = document.getElementById('favorites-list-container');
 
-  function openFavoritesModal() {
+  function openFavoritesModal(pushState = true) {
     if (!favoritesModal) return;
     favoritesModal.style.display = 'flex';
     loadFavoritesList();
+
+    if (pushState && window.history && window.history.pushState) {
+      window.history.pushState({ view: getCurrentViewName(), modal: 'favorites' }, '');
+    }
   }
 
-  function closeFavoritesModal() {
-    if (favoritesModal) {
-      favoritesModal.style.display = 'none';
+  function closeFavoritesModal(triggerHistoryBack = true) {
+    if (!favoritesModal) return;
+    const isVisible = favoritesModal.style.display === 'flex';
+    favoritesModal.style.display = 'none';
+
+    if (isVisible && triggerHistoryBack && window.history && window.history.state && window.history.state.modal === 'favorites') {
+      window.history.back();
     }
   }
 
   if (btnSelectFavorite) {
     btnSelectFavorite.addEventListener('click', () => {
-      openFavoritesModal();
+      openFavoritesModal(true);
     });
   }
 
   if (btnCloseFavoritesModal) {
     btnCloseFavoritesModal.addEventListener('click', () => {
-      closeFavoritesModal();
+      closeFavoritesModal(true);
     });
   }
 
   if (favoritesModal) {
     favoritesModal.addEventListener('click', (e) => {
       if (e.target === favoritesModal) {
-        closeFavoritesModal();
+        closeFavoritesModal(true);
       }
     });
   }
@@ -1092,7 +1202,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function selectFavoriteAsTemplate(fav) {
-    closeFavoritesModal();
+    closeFavoritesModal(false);
 
     // Asynchronously update last_used_at timestamp on server so it moves to top next time
     if (fav.id) {
@@ -1129,7 +1239,10 @@ document.addEventListener('DOMContentLoaded', () => {
       durationMs: 0
     };
 
-    renderValidationView();
+    renderValidationView(false);
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({ view: 'validation', modal: null }, '');
+    }
     showToast('Favoriet als Vorlage geladen! ⭐');
   }
 });
