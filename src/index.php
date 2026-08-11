@@ -737,6 +737,36 @@ if ($isAjaxRequest) {
         }
     }
 
+    // Handler: Favorit löschen
+    if ($action === 'delete_favorite') {
+        ensure_favorites_table_exists($pdo);
+
+        $favId = (int)($_POST['favorite_id'] ?? ($_POST['id'] ?? 0));
+        $mealId = (int)($_POST['meal_id'] ?? 0);
+
+        if ($favId <= 0 && $mealId <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Ungültige Favoriten-ID.']);
+            exit;
+        }
+
+        try {
+            if ($favId > 0) {
+                $stmt = $pdo->prepare("DELETE FROM favorites WHERE id = :id AND account_id = :account_id");
+                $stmt->execute(['id' => $favId, 'account_id' => $_SESSION['user_id']]);
+            } else {
+                $stmt = $pdo->prepare("DELETE FROM favorites WHERE meal_id = :meal_id AND account_id = :account_id");
+                $stmt->execute(['meal_id' => $mealId, 'account_id' => $_SESSION['user_id']]);
+            }
+
+            echo json_encode(['status' => 'success', 'message' => 'Favorit aus Favoriten entfernt.']);
+            exit;
+        } catch (Exception $e) {
+            error_log("Failed to delete favorite: " . $e->getMessage());
+            echo json_encode(['status' => 'error', 'message' => 'Fehler beim Löschen des Favoriten.']);
+            exit;
+        }
+    }
+
     // Handler 3: Erstmaliger Photo Upload & Analyse
     if (empty($_POST) && empty($_FILES) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
         echo json_encode(['status' => 'error', 'message' => 'Die hochgeladene Datei überschreitet die maximale Server-Uploadgröße (post_max_size).']);

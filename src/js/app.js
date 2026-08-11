@@ -1181,7 +1181,60 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
           `;
 
-          itemEl.addEventListener('click', () => {
+          let longPressTimer = null;
+          let isLongPress = false;
+
+          function startLongPressTimer() {
+            isLongPress = false;
+            longPressTimer = setTimeout(() => {
+              isLongPress = true;
+              if (navigator.vibrate) {
+                try { navigator.vibrate(50); } catch (_) {}
+              }
+              confirmAndDeleteFavorite(fav, itemEl);
+            }, 500);
+          }
+
+          function clearLongPressTimer() {
+            if (longPressTimer) {
+              clearTimeout(longPressTimer);
+              longPressTimer = null;
+            }
+          }
+
+          // Mobile touch long-press handlers
+          itemEl.addEventListener('touchstart', () => {
+            startLongPressTimer();
+          }, { passive: true });
+
+          itemEl.addEventListener('touchend', () => {
+            clearLongPressTimer();
+          });
+
+          itemEl.addEventListener('touchcancel', () => {
+            clearLongPressTimer();
+          });
+
+          itemEl.addEventListener('touchmove', () => {
+            clearLongPressTimer();
+          });
+
+          // Desktop right-click contextmenu handler
+          itemEl.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            clearLongPressTimer();
+            isLongPress = true;
+            confirmAndDeleteFavorite(fav, itemEl);
+          });
+
+          // Item click handler (only triggers template selection if not a long-press)
+          itemEl.addEventListener('click', (e) => {
+            if (isLongPress) {
+              e.preventDefault();
+              e.stopPropagation();
+              isLongPress = false;
+              return;
+            }
             selectFavoriteAsTemplate(fav);
           });
 
@@ -1244,5 +1297,55 @@ document.addEventListener('DOMContentLoaded', () => {
       window.history.replaceState({ view: 'validation', modal: null }, '');
     }
     showToast('Favoriet als Vorlage geladen! ⭐');
+  }
+
+  async function confirmAndDeleteFavorite(fav, itemEl) {
+    const favTitle = fav.title || 'Mahlzeit';
+    const confirmDelete = confirm(`Möchtest du "${favTitle}" wirklich aus deinen Favoriten entfernen?`);
+    if (!confirmDelete) return;
+
+    try {
+      const formData = new FormData();
+      formData.append('action', 'delete_favorite');
+      if (fav.id) {
+        formData.append('favorite_id', fav.id);
+      }
+      if (fav.meal_id) {
+        formData.append('meal_id', fav.meal_id);
+      }
+
+      const response = await fetch('index.php', {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+      });
+
+      const result = await response.json();
+      if (result.status === 'success') {
+        showToast(result.message || 'Favorit aus Favoriten entfernt. 🗑️');
+        if (itemEl && itemEl.parentNode) {
+          itemEl.remove();
+        }
+
+        if (favoritesListContainer && favoritesListContainer.querySelectorAll('.favorite-item-compact').length === 0) {
+          favoritesListContainer.innerHTML = `
+            <div class="favorites-empty-msg">
+              <p>Du hast bisher noch keine Favorieten gespeichert. ⭐</p>
+              <small>Du kannst Mahlzeiten in der Historie im Detail-Modal als Favoriet markieren.</small>
+            </div>
+          `;
+        }
+
+        if (currentActiveMeal && (currentActiveMeal.id === fav.meal_id || currentActiveMeal.id === fav.id)) {
+          currentActiveMeal.is_favorite = false;
+          updateFavoriteButtonState(false);
+        }
+      } else {
+        showToast(result.message || 'Fehler beim Löschen des Favoriten. ⚠️');
+      }
+    } catch (err) {
+      console.error('Error deleting favorite:', err);
+      showToast('Fehler beim Löschen des Favoriten. ⚠️');
+    }
   }
 });

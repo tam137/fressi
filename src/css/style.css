@@ -1421,6 +1421,9 @@ textarea.form-control {
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s ease-in-out;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .favorite-item-compact:hover {
