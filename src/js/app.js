@@ -461,14 +461,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             resetAiReanalysisState();
             renderAiModelInfo();
-            document.body.classList.remove('is-validation-mode');
-            document.body.classList.add('is-photo-mode');
-            if (validationCard) validationCard.style.display = 'none';
-            if (photoCard) photoCard.style.display = 'block';
             hideStatus();
+
+            // Replace validation state in browser history with history state & switch to history view
             if (window.history && window.history.replaceState) {
-              window.history.replaceState({ view: 'photo', modal: null }, '');
+              window.history.replaceState({ view: 'history', modal: null }, '');
             }
+            showHistoryView(false);
           } else {
             const errorMsg = saveResult.message || 'Unbekannter Fehler';
             const detail = saveResult.error_detail ? ` (${saveResult.error_detail})` : '';
