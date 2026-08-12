@@ -944,7 +944,7 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                             <span>History</span>
                         </a>
                         <div class="dropdown-divider"></div>
-                        <a href="logout.php" class="dropdown-item dropdown-item-logout">
+                        <a href="logout.php" id="logout-btn" class="dropdown-item dropdown-item-logout">
                             <span class="dropdown-icon">🚪</span>
                             <span>Abmelden</span>
                         </a>

@@ -619,6 +619,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const hamburgerDropdown = document.getElementById('hamburger-dropdown');
   const menuItemHistory = document.getElementById('menu-item-history');
 
+  const logoutBtn = document.getElementById('logout-btn');
+
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const confirmLogout = confirm('Möchtest du dich wirklich abmelden?');
+      if (confirmLogout) {
+        window.location.href = logoutBtn.getAttribute('href') || 'logout.php';
+      }
+    });
+  }
+
   if (hamburgerBtn && hamburgerDropdown) {
     hamburgerBtn.addEventListener('click', (e) => {
       e.stopPropagation();
