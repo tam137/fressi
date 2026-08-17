@@ -1072,17 +1072,13 @@ textarea.form-control {
 .history-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
   gap: 1rem;
   margin-bottom: 1.25rem;
   padding-bottom: 0.75rem;
   border-bottom: 1px solid var(--border-vintage);
-}
-
-.btn-back-nav {
-  padding: 0.4rem 0.85rem;
-  font-size: 0.88rem;
-  border-radius: var(--radius-full);
 }
 
 .history-list-container {

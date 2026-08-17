@@ -675,7 +675,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // View Switching & History Page Controller
   // ==========================================
   const historyCard = document.getElementById('history-card');
-  const btnBackToCamera = document.getElementById('btn-back-to-camera');
+  const btnCloseHistory = document.getElementById('btn-close-history');
   const historyListContainer = document.getElementById('history-list-container');
   const historyStatus = document.getElementById('history-status');
   const btnLoadMoreHistory = document.getElementById('btn-load-more-history');
@@ -726,8 +726,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (btnBackToCamera) {
-    btnBackToCamera.addEventListener('click', () => {
+  if (btnCloseHistory) {
+    btnCloseHistory.addEventListener('click', () => {
       showCameraView(true);
     });
   }

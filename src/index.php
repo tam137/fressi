@@ -1084,10 +1084,8 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
 
             <!-- History Card (Hidden by default) -->
             <div id="history-card" class="photo-card history-card" style="display: none;">
+                <button id="btn-close-history" class="modal-close-btn" title="Zurück zur Kamera" aria-label="Schließen">&times;</button>
                 <div class="card-header history-header">
-                    <button id="btn-back-to-camera" class="btn-secondary btn-back-nav" title="Zurück zur Kamera">
-                        ← Kamera
-                    </button>
                     <h1 class="card-title">Mahlzeiten-<span class="accent-text">Historie</span></h1>
                 </div>
 
