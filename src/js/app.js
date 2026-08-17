@@ -53,6 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Navigation & Browser History Controller
   // ==========================================
   function getCurrentViewName() {
+    if (statsCard && statsCard.style.display === 'block') return 'stats';
     if (historyCard && historyCard.style.display === 'block') return 'history';
     if (validationCard && validationCard.style.display === 'block') return 'validation';
     return 'photo';
@@ -85,7 +86,12 @@ document.addEventListener('DOMContentLoaded', () => {
       resetValidationStateAndShowPhotoView(false);
       return;
     }
-    // 5. Return to Photo Mode if in History Card
+    // 5. Return to Photo Mode if in Stats Card
+    if (statsCard && statsCard.style.display === 'block') {
+      showCameraView(false);
+      return;
+    }
+    // 6. Return to Photo Mode if in History Card
     if (historyCard && historyCard.style.display === 'block') {
       showCameraView(false);
       return;
@@ -296,6 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.remove('is-photo-mode');
     document.body.classList.add('is-validation-mode');
     if (photoCard) photoCard.style.display = 'none';
+    if (statsCard) statsCard.style.display = 'none';
     if (historyCard) historyCard.style.display = 'none';
     if (validationCard) validationCard.style.display = 'block';
 
@@ -584,6 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('is-photo-mode');
     if (validationCard) validationCard.style.display = 'none';
     if (historyCard) historyCard.style.display = 'none';
+    if (statsCard) statsCard.style.display = 'none';
     if (photoCard) photoCard.style.display = 'block';
     hideStatus();
 
@@ -684,6 +692,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let historyLoadedInitial = false;
 
   function showCameraView(pushState = true) {
+    if (statsCard) statsCard.style.display = 'none';
     if (historyCard) historyCard.style.display = 'none';
     if (validationCard) validationCard.style.display = 'none';
     if (photoCard) photoCard.style.display = 'block';
@@ -700,6 +709,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function showHistoryView(pushState = true) {
     if (photoCard) photoCard.style.display = 'none';
     if (validationCard) validationCard.style.display = 'none';
+    if (statsCard) statsCard.style.display = 'none';
     if (historyCard) historyCard.style.display = 'block';
 
     document.body.classList.remove('is-photo-mode');
@@ -859,6 +869,239 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
     });
+  }
+
+  // ==========================================
+  // Statistics Page Controller
+  // ==========================================
+  const menuItemStats = document.getElementById('menu-item-stats');
+  const statsCard = document.getElementById('stats-card');
+  const btnCloseStats = document.getElementById('btn-close-stats');
+  const statsFilterBtns = document.querySelectorAll('.stats-filter-btn');
+  const statsStatus = document.getElementById('stats-status');
+  const statsContentArea = document.getElementById('stats-content-area');
+  const statsKpiContainer = document.getElementById('stats-kpi-container');
+  const chartIntervalsContainer = document.getElementById('chart-intervals-container');
+  const chartWeekdaysContainer = document.getElementById('chart-weekdays-container');
+
+  let currentStatsRange = '30';
+  let statsLoadedRange = null;
+
+  function showStatsView(pushState = true) {
+    if (photoCard) photoCard.style.display = 'none';
+    if (validationCard) validationCard.style.display = 'none';
+    if (historyCard) historyCard.style.display = 'none';
+    if (statsCard) statsCard.style.display = 'block';
+
+    document.body.classList.remove('is-photo-mode');
+    document.body.classList.remove('is-validation-mode');
+
+    if (pushState && window.history && window.history.pushState) {
+      if (!window.history.state || window.history.state.view !== 'stats') {
+        window.history.pushState({ view: 'stats', modal: null }, '');
+      }
+    }
+
+    if (statsLoadedRange !== currentStatsRange) {
+      loadStats(currentStatsRange);
+    }
+  }
+
+  function showStatsStatus(msg, type = 'info') {
+    if (!statsStatus) return;
+    statsStatus.className = `status-box status-${type}`;
+    statsStatus.textContent = msg;
+    statsStatus.style.display = 'block';
+  }
+
+  function hideStatsStatus() {
+    if (!statsStatus) return;
+    statsStatus.style.display = 'none';
+  }
+
+  if (menuItemStats) {
+    menuItemStats.addEventListener('click', (e) => {
+      e.preventDefault();
+      closeHamburgerDropdown(false);
+      showStatsView(true);
+    });
+  }
+
+  if (btnCloseStats) {
+    btnCloseStats.addEventListener('click', () => {
+      showCameraView(true);
+    });
+  }
+
+  if (statsFilterBtns) {
+    statsFilterBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const range = btn.dataset.range || '30';
+        if (range === currentStatsRange) return;
+
+        statsFilterBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        currentStatsRange = range;
+        loadStats(currentStatsRange);
+      });
+    });
+  }
+
+  async function loadStats(range = '30') {
+    if (!statsContentArea) return;
+
+    showStatsStatus('Lade Statistiken... ⏳', 'info');
+    statsContentArea.style.opacity = '0.5';
+
+    try {
+      const response = await fetch(`index.php?action=get_stats&range=${encodeURIComponent(range)}`);
+      const data = await response.json();
+
+      hideStatsStatus();
+      statsContentArea.style.opacity = '1';
+
+      if (data.status !== 'success') {
+        showStatsStatus(data.message || 'Fehler beim Laden der Statistiken.', 'error');
+        return;
+      }
+
+      statsLoadedRange = range;
+      renderStats(data);
+    } catch (err) {
+      console.error('Error loading stats:', err);
+      hideStatsStatus();
+      statsContentArea.style.opacity = '1';
+      showStatsStatus('Netzwerkfehler beim Laden der Statistiken.', 'error');
+    }
+  }
+
+  function renderStats(data) {
+    if (!statsContentArea) return;
+
+    if (data.is_empty) {
+      statsContentArea.innerHTML = `
+        <div class="stats-empty-state">
+          <div class="stats-empty-icon">📊</div>
+          <div class="stats-empty-title">Keine Daten vorhanden</div>
+          <div class="stats-empty-desc">Im ausgewählten Zeitraum wurden noch keine Mahlzeiten erfasst.</div>
+        </div>
+      `;
+      return;
+    }
+
+    // Ensure content structure exists
+    if (!document.getElementById('stats-kpi-container')) {
+      statsContentArea.innerHTML = `
+        <div id="stats-kpi-container" class="stats-kpi-grid"></div>
+        <div class="stats-chart-section">
+          <div class="stats-chart-header">
+            <h2 class="stats-chart-title">🕒 Nach Tageszeit</h2>
+            <span class="stats-chart-subtitle">Ø kcal im 3-Stunden-Intervall</span>
+          </div>
+          <div id="chart-intervals-container" class="css-chart-container"></div>
+        </div>
+        <div class="stats-chart-section">
+          <div class="stats-chart-header">
+            <h2 class="stats-chart-title">📅 Nach Wochentag</h2>
+            <span class="stats-chart-subtitle">Ø kcal pro Wochentag</span>
+          </div>
+          <div id="chart-weekdays-container" class="css-chart-container"></div>
+        </div>
+      `;
+    }
+
+    const kpiContainer = document.getElementById('stats-kpi-container');
+    const intervalsContainer = document.getElementById('chart-intervals-container');
+    const weekdaysContainer = document.getElementById('chart-weekdays-container');
+
+    const kpi = data.kpi || {};
+
+    // 1. KPI Cards
+    if (kpiContainer) {
+      kpiContainer.innerHTML = `
+        <div class="kpi-card">
+          <div class="kpi-icon">🔥</div>
+          <div class="kpi-value">${Number(kpi.avg_daily_calories || 0).toLocaleString('de-DE')}<span class="kpi-unit">kcal</span></div>
+          <div class="kpi-label">Ø Kalorien / Tag</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">🕒</div>
+          <div class="kpi-value">${escapeHtml(kpi.peak_interval || '–')}</div>
+          <div class="kpi-label">Aktivste Essenszeit</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">📅</div>
+          <div class="kpi-value">${escapeHtml(kpi.peak_weekday || '–')}</div>
+          <div class="kpi-label">Kalorienreichster Tag</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">🍽️</div>
+          <div class="kpi-value">${Number(kpi.total_meals || 0).toLocaleString('de-DE')}</div>
+          <div class="kpi-label">Erfasste Mahlzeiten</div>
+        </div>
+      `;
+    }
+
+    // 2. Daytime Intervals Chart (8 bars)
+    if (intervalsContainer) {
+      const intervals = data.intervals || [];
+      let maxIntervalVal = 0;
+      intervals.forEach(item => {
+        if (item.avg_calories > maxIntervalVal) maxIntervalVal = item.avg_calories;
+      });
+
+      let intervalsHtml = '<div class="css-bar-chart">';
+      intervals.forEach(item => {
+        const avg = item.avg_calories || 0;
+        const isPeak = maxIntervalVal > 0 && avg === maxIntervalVal;
+        const isZero = avg === 0;
+        const pct = maxIntervalVal > 0 ? Math.max(4, Math.round((avg / maxIntervalVal) * 100)) : 0;
+        const colClass = `bar-column ${isPeak ? 'is-peak' : ''} ${isZero ? 'is-zero' : ''}`;
+
+        intervalsHtml += `
+          <div class="${colClass}" title="${escapeHtml(item.full_label)}: Ø ${avg} kcal (${item.meal_count} Mahlzeiten)">
+            <div class="bar-val">${isZero ? '0' : avg}</div>
+            <div class="bar-track">
+              <div class="bar-fill" style="height: ${pct}%;"></div>
+            </div>
+            <div class="bar-label">${escapeHtml(item.label)}</div>
+          </div>
+        `;
+      });
+      intervalsHtml += '</div>';
+      intervalsContainer.innerHTML = intervalsHtml;
+    }
+
+    // 3. Weekdays Chart (7 bars)
+    if (weekdaysContainer) {
+      const weekdays = data.weekdays || [];
+      let maxWeekdayVal = 0;
+      weekdays.forEach(item => {
+        if (item.avg_calories > maxWeekdayVal) maxWeekdayVal = item.avg_calories;
+      });
+
+      let weekdaysHtml = '<div class="css-bar-chart">';
+      weekdays.forEach(item => {
+        const avg = item.avg_calories || 0;
+        const isPeak = maxWeekdayVal > 0 && avg === maxWeekdayVal;
+        const isZero = avg === 0;
+        const pct = maxWeekdayVal > 0 ? Math.max(4, Math.round((avg / maxWeekdayVal) * 100)) : 0;
+        const colClass = `bar-column ${isPeak ? 'is-peak' : ''} ${isZero ? 'is-zero' : ''}`;
+
+        weekdaysHtml += `
+          <div class="${colClass}" title="${escapeHtml(item.full_label)}: Ø ${avg} kcal (${item.meal_count} Mahlzeiten)">
+            <div class="bar-val">${isZero ? '0' : avg}</div>
+            <div class="bar-track">
+              <div class="bar-fill" style="height: ${pct}%;"></div>
+            </div>
+            <div class="bar-label">${escapeHtml(item.short_label)}</div>
+          </div>
+        `;
+      });
+      weekdaysHtml += '</div>';
+      weekdaysContainer.innerHTML = weekdaysHtml;
+    }
   }
 
   // ==========================================

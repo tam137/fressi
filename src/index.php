@@ -426,6 +426,188 @@ if ($isAjaxRequest) {
         }
     }
 
+    // Handler: Statistiken abrufen (Tageszeit & Wochentag)
+    if ($action === 'get_stats') {
+        ensure_meals_table_exists($pdo);
+
+        $range = $_REQUEST['range'] ?? '30';
+        if (!in_array($range, ['30', '90', 'all'], true)) {
+            $range = '30';
+        }
+
+        try {
+            $params = ['account_id' => $_SESSION['user_id']];
+            $whereSql = "WHERE account_id = :account_id";
+
+            if ($range === '30') {
+                $startTimestamp = strtotime('-29 days 00:00:00');
+                $whereSql .= " AND consumed_at >= :start_date";
+                $params['start_date'] = date('Y-m-d 00:00:00', $startTimestamp);
+            } elseif ($range === '90') {
+                $startTimestamp = strtotime('-89 days 00:00:00');
+                $whereSql .= " AND consumed_at >= :start_date";
+                $params['start_date'] = date('Y-m-d 00:00:00', $startTimestamp);
+            }
+
+            $stmt = $pdo->prepare("
+                SELECT id, consumed_at, calories
+                FROM meals
+                {$whereSql}
+                ORDER BY consumed_at ASC
+            ");
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Initialize Interval Data (8 slots: 00-03, 03-06, 06-09, 09-12, 12-15, 15-18, 18-21, 21-24)
+            $intervalLabels = [
+                0 => ['label' => '00-03', 'full_label' => '00:00 – 03:00 Uhr'],
+                1 => ['label' => '03-06', 'full_label' => '03:00 – 06:00 Uhr'],
+                2 => ['label' => '06-09', 'full_label' => '06:00 – 09:00 Uhr'],
+                3 => ['label' => '09-12', 'full_label' => '09:00 – 12:00 Uhr'],
+                4 => ['label' => '12-15', 'full_label' => '12:00 – 15:00 Uhr'],
+                5 => ['label' => '15-18', 'full_label' => '15:00 – 18:00 Uhr'],
+                6 => ['label' => '18-21', 'full_label' => '18:00 – 21:00 Uhr'],
+                7 => ['label' => '21-24', 'full_label' => '21:00 – 24:00 Uhr'],
+            ];
+
+            $intervalStats = [];
+            for ($i = 0; $i < 8; $i++) {
+                $intervalStats[$i] = [
+                    'slot' => $i,
+                    'label' => $intervalLabels[$i]['label'],
+                    'full_label' => $intervalLabels[$i]['full_label'],
+                    'total_calories' => 0,
+                    'meal_count' => 0,
+                    'avg_calories' => 0
+                ];
+            }
+
+            // Initialize Weekdays (1 = Montag ... 7 = Sonntag)
+            $weekdayNames = [
+                1 => ['short' => 'Mo', 'full' => 'Montag'],
+                2 => ['short' => 'Di', 'full' => 'Dienstag'],
+                3 => ['short' => 'Mi', 'full' => 'Mittwoch'],
+                4 => ['short' => 'Do', 'full' => 'Donnerstag'],
+                5 => ['short' => 'Fr', 'full' => 'Freitag'],
+                6 => ['short' => 'Sa', 'full' => 'Samstag'],
+                7 => ['short' => 'So', 'full' => 'Sonntag'],
+            ];
+
+            $weekdayStats = [];
+            $weekdayDates = [];
+            for ($w = 1; $w <= 7; $w++) {
+                $weekdayStats[$w] = [
+                    'weekday' => $w,
+                    'short_label' => $weekdayNames[$w]['short'],
+                    'full_label' => $weekdayNames[$w]['full'],
+                    'total_calories' => 0,
+                    'meal_count' => 0,
+                    'avg_calories' => 0
+                ];
+                $weekdayDates[$w] = [];
+            }
+
+            $totalCalories = 0;
+            $totalMeals = count($rows);
+            $distinctDays = [];
+
+            foreach ($rows as $row) {
+                $cal = (int)$row['calories'];
+                $ts = strtotime($row['consumed_at']);
+                $dateKey = date('Y-m-d', $ts);
+                $hour = (int)date('G', $ts);
+                $isoDow = (int)date('N', $ts);
+
+                $totalCalories += $cal;
+                $distinctDays[$dateKey] = true;
+
+                $slot = (int)floor($hour / 3);
+                if ($slot >= 0 && $slot <= 7) {
+                    $intervalStats[$slot]['total_calories'] += $cal;
+                    $intervalStats[$slot]['meal_count']++;
+                }
+
+                if ($isoDow >= 1 && $isoDow <= 7) {
+                    $weekdayStats[$isoDow]['total_calories'] += $cal;
+                    $weekdayStats[$isoDow]['meal_count']++;
+                    $weekdayDates[$isoDow][$dateKey] = true;
+                }
+            }
+
+            $activeDaysCount = count($distinctDays);
+
+            // Compute averages for intervals
+            $maxIntervalAvg = 0;
+            $peakSlotIndex = null;
+            foreach ($intervalStats as $i => &$slotData) {
+                if ($activeDaysCount > 0) {
+                    $slotData['avg_calories'] = (int)round($slotData['total_calories'] / $activeDaysCount);
+                } else {
+                    $slotData['avg_calories'] = 0;
+                }
+                if ($slotData['avg_calories'] > $maxIntervalAvg) {
+                    $maxIntervalAvg = $slotData['avg_calories'];
+                    $peakSlotIndex = $i;
+                }
+            }
+            unset($slotData);
+
+            // Compute averages for weekdays
+            $maxWeekdayAvg = 0;
+            $peakWeekdayNum = null;
+            foreach ($weekdayStats as $w => &$wData) {
+                $daysForThisWeekday = count($weekdayDates[$w]);
+                if ($daysForThisWeekday > 0) {
+                    $wData['avg_calories'] = (int)round($wData['total_calories'] / $daysForThisWeekday);
+                } else {
+                    $wData['avg_calories'] = 0;
+                }
+                if ($wData['avg_calories'] > $maxWeekdayAvg) {
+                    $maxWeekdayAvg = $wData['avg_calories'];
+                    $peakWeekdayNum = $w;
+                }
+            }
+            unset($wData);
+
+            $avgDailyCalories = $activeDaysCount > 0 ? (int)round($totalCalories / $activeDaysCount) : 0;
+
+            $peakIntervalLabel = ($peakSlotIndex !== null && $maxIntervalAvg > 0)
+                ? $intervalStats[$peakSlotIndex]['full_label']
+                : '–';
+
+            $peakWeekdayLabel = ($peakWeekdayNum !== null && $maxWeekdayAvg > 0)
+                ? $weekdayStats[$peakWeekdayNum]['full_label']
+                : '–';
+
+            echo json_encode([
+                'status' => 'success',
+                'range' => $range,
+                'is_empty' => ($totalMeals === 0),
+                'kpi' => [
+                    'avg_daily_calories' => $avgDailyCalories,
+                    'peak_interval' => $peakIntervalLabel,
+                    'peak_interval_avg' => $maxIntervalAvg,
+                    'peak_weekday' => $peakWeekdayLabel,
+                    'peak_weekday_avg' => $maxWeekdayAvg,
+                    'total_meals' => $totalMeals,
+                    'total_calories' => $totalCalories,
+                    'active_days' => $activeDaysCount
+                ],
+                'intervals' => array_values($intervalStats),
+                'weekdays' => array_values($weekdayStats)
+            ]);
+            exit;
+        } catch (Exception $e) {
+            error_log("Failed to fetch statistics: " . $e->getMessage());
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Fehler beim Laden der Statistiken.',
+                'error_detail' => $e->getMessage()
+            ]);
+            exit;
+        }
+    }
+
     // Handler 1: Refinement Loop (Nutzer hat Zutaten/Text geändert)
     if ($action === 'refine_summary') {
         $photoPath = $_POST['photo_path'] ?? '';
@@ -943,6 +1125,10 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                             <span class="dropdown-icon">📜</span>
                             <span>History</span>
                         </a>
+                        <a href="#" id="menu-item-stats" class="dropdown-item">
+                            <span class="dropdown-icon">📊</span>
+                            <span>Statistiken</span>
+                        </a>
                         <div class="dropdown-divider"></div>
                         <a href="logout.php" id="logout-btn" class="dropdown-item dropdown-item-logout">
                             <span class="dropdown-icon">🚪</span>
@@ -1099,6 +1285,46 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                     <button id="btn-load-more-history" class="btn-primary load-more-btn" style="display: none;">
                         Mehr laden ⏳
                     </button>
+                </div>
+            </div>
+
+            <!-- Statistics Card (Hidden by default) -->
+            <div id="stats-card" class="photo-card stats-card" style="display: none;">
+                <button id="btn-close-stats" class="modal-close-btn" title="Zurück zur Kamera" aria-label="Schließen">&times;</button>
+                <div class="card-header stats-header">
+                    <h1 class="card-title">Kalorien-<span class="accent-text">Statistik</span></h1>
+                </div>
+
+                <!-- Range Selector Pills -->
+                <div class="stats-filter-bar" role="group" aria-label="Zeitraum auswählen">
+                    <button type="button" class="stats-filter-btn active" data-range="30">30 Tage</button>
+                    <button type="button" class="stats-filter-btn" data-range="90">90 Tage</button>
+                    <button type="button" class="stats-filter-btn" data-range="all">Gesamt</button>
+                </div>
+
+                <div id="stats-status" class="status-box" style="display: none;"></div>
+
+                <div id="stats-content-area" class="stats-content-area">
+                    <!-- KPI Summary Grid -->
+                    <div id="stats-kpi-container" class="stats-kpi-grid"></div>
+
+                    <!-- Chart 1: Time of Day (3-hour intervals) -->
+                    <div class="stats-chart-section">
+                        <div class="stats-chart-header">
+                            <h2 class="stats-chart-title">🕒 Nach Tageszeit</h2>
+                            <span class="stats-chart-subtitle">Ø kcal im 3-Stunden-Intervall</span>
+                        </div>
+                        <div id="chart-intervals-container" class="css-chart-container"></div>
+                    </div>
+
+                    <!-- Chart 2: Weekday -->
+                    <div class="stats-chart-section">
+                        <div class="stats-chart-header">
+                            <h2 class="stats-chart-title">📅 Nach Wochentag</h2>
+                            <span class="stats-chart-subtitle">Ø kcal pro Wochentag</span>
+                        </div>
+                        <div id="chart-weekdays-container" class="css-chart-container"></div>
+                    </div>
                 </div>
             </div>
         </section>
