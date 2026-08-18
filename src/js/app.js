@@ -1422,7 +1422,6 @@ document.addEventListener('DOMContentLoaded', () => {
           itemEl.className = 'favorite-item-compact';
 
           const calories = Number(fav.calories || 0).toLocaleString('de-DE');
-          const portion = Number(fav.portion || 100);
           let ingredientsText = 'Keine Zutaten angegeben';
           if (fav.ingredients) {
             if (typeof fav.ingredients === 'string') {
@@ -1438,7 +1437,6 @@ document.addEventListener('DOMContentLoaded', () => {
               <div class="fav-item-ingredients">${escapeHtml(ingredientsText)}</div>
             </div>
             <div class="fav-item-meta">
-              <span class="fav-portion-badge">🍽️ ${portion} %</span>
               <span class="fav-kcal-badge">🔥 ${calories} kcal</span>
             </div>
           `;

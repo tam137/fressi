@@ -1459,17 +1459,6 @@ textarea.form-control {
   flex-shrink: 0;
 }
 
-.fav-portion-badge {
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 0.25rem 0.55rem;
-  background: rgba(52, 152, 219, 0.15);
-  color: #3498db;
-  border-radius: 20px;
-  border: 1px solid rgba(52, 152, 219, 0.3);
-  white-space: nowrap;
-}
-
 .fav-kcal-badge {
   font-size: 0.82rem;
   font-weight: 600;
