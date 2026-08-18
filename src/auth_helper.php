@@ -232,7 +232,7 @@ function ensure_favorites_table_exists($pdo) {
             CREATE TABLE IF NOT EXISTS favorites (
                 id BIGSERIAL PRIMARY KEY,
                 account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-                meal_id BIGINT NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
+                meal_id BIGINT REFERENCES meals(id) ON DELETE SET NULL,
                 title VARCHAR(255) NOT NULL DEFAULT 'Mahlzeit',
                 image_filename VARCHAR(255) DEFAULT '',
                 ingredients TEXT,
@@ -248,6 +248,44 @@ function ensure_favorites_table_exists($pdo) {
         $pdo->exec($createSql);
     } catch (Exception $e) {
         error_log("Failed to create favorites table: " . $e->getMessage());
+    }
+
+    // Migration: ensure meal_id is nullable and foreign key uses ON DELETE SET NULL
+    try {
+        $pdo->exec("ALTER TABLE favorites ALTER COLUMN meal_id DROP NOT NULL;");
+
+        $chkFk = $pdo->query("
+            SELECT confdeltype 
+            FROM pg_constraint 
+            WHERE conname = 'favorites_meal_id_fkey' 
+              AND conrelid = 'favorites'::regclass
+        ")->fetchColumn();
+
+        if ($chkFk !== 'n') {
+            $pdo->exec("
+                DO $$
+                DECLARE
+                    r RECORD;
+                BEGIN
+                    FOR r IN (
+                        SELECT tc.constraint_name
+                        FROM information_schema.table_constraints tc
+                        JOIN information_schema.key_column_usage kcu
+                          ON tc.constraint_name = kcu.constraint_name
+                          AND tc.table_schema = kcu.table_schema
+                        WHERE tc.constraint_type = 'FOREIGN KEY'
+                          AND tc.table_name = 'favorites'
+                          AND kcu.column_name = 'meal_id'
+                    ) LOOP
+                        EXECUTE 'ALTER TABLE favorites DROP CONSTRAINT IF EXISTS ' || quote_ident(r.constraint_name);
+                    END LOOP;
+
+                    ALTER TABLE favorites ADD CONSTRAINT favorites_meal_id_fkey FOREIGN KEY (meal_id) REFERENCES meals(id) ON DELETE SET NULL;
+                END $$;
+            ");
+        }
+    } catch (Exception $ex) {
+        error_log("Failed to update favorites foreign key constraint to ON DELETE SET NULL: " . $ex->getMessage());
     }
 
     try {

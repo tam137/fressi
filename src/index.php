@@ -940,12 +940,43 @@ if ($isAjaxRequest) {
         }
 
         try {
+            $imageFilename = '';
             if ($favId > 0) {
+                $stmtFetch = $pdo->prepare("SELECT image_filename FROM favorites WHERE id = :id AND account_id = :account_id");
+                $stmtFetch->execute(['id' => $favId, 'account_id' => $_SESSION['user_id']]);
+                $favRow = $stmtFetch->fetch();
+                $imageFilename = $favRow['image_filename'] ?? '';
+
                 $stmt = $pdo->prepare("DELETE FROM favorites WHERE id = :id AND account_id = :account_id");
                 $stmt->execute(['id' => $favId, 'account_id' => $_SESSION['user_id']]);
             } else {
+                $stmtFetch = $pdo->prepare("SELECT image_filename FROM favorites WHERE meal_id = :meal_id AND account_id = :account_id");
+                $stmtFetch->execute(['meal_id' => $mealId, 'account_id' => $_SESSION['user_id']]);
+                $favRow = $stmtFetch->fetch();
+                $imageFilename = $favRow['image_filename'] ?? '';
+
                 $stmt = $pdo->prepare("DELETE FROM favorites WHERE meal_id = :meal_id AND account_id = :account_id");
                 $stmt->execute(['meal_id' => $mealId, 'account_id' => $_SESSION['user_id']]);
+            }
+
+            if (!empty($imageFilename)) {
+                $stmtCheckImg = $pdo->prepare("
+                    SELECT (
+                        (SELECT COUNT(*) FROM meals WHERE image_filename = :img1) +
+                        (SELECT COUNT(*) FROM favorites WHERE image_filename = :img2)
+                    ) AS ref_count
+                ");
+                $stmtCheckImg->execute([
+                    'img1' => $imageFilename,
+                    'img2' => $imageFilename
+                ]);
+                $refRow = $stmtCheckImg->fetch();
+                if (empty($refRow['ref_count']) || (int)$refRow['ref_count'] === 0) {
+                    $imgPath = __DIR__ . '/uploads/photos/' . $imageFilename;
+                    if (file_exists($imgPath)) {
+                        @unlink($imgPath);
+                    }
+                }
             }
 
             echo json_encode(['status' => 'success', 'message' => 'Favorit aus Favoriten entfernt.']);
