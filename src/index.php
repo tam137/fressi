@@ -1075,18 +1075,27 @@ if ($isAjaxRequest) {
 
 // Determine build timestamp (Git commit time if available, otherwise file modification time fallback)
 $buildTimestamp = null;
-if (function_exists('exec') && is_dir(__DIR__ . '/../.git')) {
-    $gitTimestamp = @exec('git -C ' . escapeshellarg(__DIR__) . ' log -1 --format="%ct"');
+if (function_exists('exec') && (is_dir(__DIR__ . '/../.git') || is_dir(__DIR__ . '/.git'))) {
+    $gitTimestamp = @exec('git -C ' . escapeshellarg(__DIR__) . ' log -1 --format="%ct" 2>/dev/null');
     if (is_numeric($gitTimestamp) && (int)$gitTimestamp > 0) {
         $buildTimestamp = (int)$gitTimestamp;
     }
 }
 if (!$buildTimestamp) {
-    $buildTimestamp = max(
-        filemtime(__DIR__ . '/index.php'),
-        filemtime(__DIR__ . '/js/app.js'),
-        filemtime(__DIR__ . '/css/style.css')
-    );
+    $filesToCheck = [
+        __DIR__ . '/index.php',
+        __DIR__ . '/auth_helper.php',
+        __DIR__ . '/prompts.php',
+        __DIR__ . '/js/app.js',
+        __DIR__ . '/css/style.css'
+    ];
+    $mtimes = [];
+    foreach ($filesToCheck as $f) {
+        if (file_exists($f)) {
+            $mtimes[] = filemtime($f);
+        }
+    }
+    $buildTimestamp = !empty($mtimes) ? max($mtimes) : time();
 }
 $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
 ?>
