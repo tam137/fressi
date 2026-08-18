@@ -166,70 +166,42 @@ function rotate_remember_token($pdo, $token_id, $account_id) {
  * @return bool Returns true if table exists or was created successfully, false on error.
  */
 /**
- * Check if a specific column exists in a PostgreSQL table.
- */
-function db_has_column($pdo, $table, $column) {
-    static $columnCache = [];
-    $cacheKey = "{$table}.{$column}";
-    if (isset($columnCache[$cacheKey])) {
-        return $columnCache[$cacheKey];
-    }
-    try {
-        $stmt = $pdo->prepare("
-            SELECT 1 FROM information_schema.columns 
-            WHERE table_name = :table AND column_name = :column LIMIT 1
-        ");
-        $stmt->execute(['table' => $table, 'column' => $column]);
-        $exists = (bool)$stmt->fetchColumn();
-        $columnCache[$cacheKey] = $exists;
-        return $exists;
-    } catch (Exception $e) {
-        return false;
-    }
-}
-
-/**
- * Ensure that the meals table exists in PostgreSQL.
+ * Ensure that the meals table exists in PostgreSQL and has all required columns.
  *
  * @param PDO $pdo
- * @return bool Returns true if table exists or was created successfully, false on error.
+ * @return bool Returns true if table and portion column exist, false on error.
  */
 function ensure_meals_table_exists($pdo) {
     try {
-        // Fast path: Check if table exists
-        $pdo->query("SELECT 1 FROM meals LIMIT 0");
+        // Step 1: Create table if missing
+        $createSql = "
+            CREATE TABLE IF NOT EXISTS meals (
+                id BIGSERIAL PRIMARY KEY,
+                account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                consumed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                title VARCHAR(255) NOT NULL DEFAULT 'Mahlzeit',
+                image_filename VARCHAR(255) NOT NULL DEFAULT '',
+                ai_model VARCHAR(100),
+                ai_attempts INTEGER NOT NULL DEFAULT 1,
+                processing_time_ms INTEGER NOT NULL DEFAULT 0,
+                ingredients TEXT,
+                health_rating TEXT,
+                calories INTEGER NOT NULL DEFAULT 0,
+                portion INTEGER NOT NULL DEFAULT 100,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            );
+        ";
+        $pdo->exec($createSql);
     } catch (Exception $e) {
-        // Table does not exist, attempt to create it
-        try {
-            $createSql = "
-                CREATE TABLE IF NOT EXISTS meals (
-                    id BIGSERIAL PRIMARY KEY,
-                    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-                    consumed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    title VARCHAR(255) NOT NULL DEFAULT 'Mahlzeit',
-                    image_filename VARCHAR(255) NOT NULL DEFAULT '',
-                    ai_model VARCHAR(100),
-                    ai_attempts INTEGER NOT NULL DEFAULT 1,
-                    processing_time_ms INTEGER NOT NULL DEFAULT 0,
-                    ingredients TEXT,
-                    health_rating TEXT,
-                    calories INTEGER NOT NULL DEFAULT 0,
-                    portion INTEGER NOT NULL DEFAULT 100,
-                    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-                );
-            ";
-            $pdo->exec($createSql);
-        } catch (Exception $ex) {
-            error_log("Failed to create meals table: " . $ex->getMessage());
-        }
+        error_log("Failed to create meals table: " . $e->getMessage());
     }
 
-    // Ensure portion column exists
+    // Step 2: Ensure portion column exists
     try {
-        $pdo->exec("ALTER TABLE meals ADD COLUMN IF NOT EXISTS portion INTEGER DEFAULT 100;");
+        $pdo->exec("ALTER TABLE meals ADD COLUMN IF NOT EXISTS portion INTEGER NOT NULL DEFAULT 100;");
         $pdo->exec("UPDATE meals SET portion = 100 WHERE portion IS NULL;");
-    } catch (Exception $ex) {
-        error_log("Failed to alter meals table column portion: " . $ex->getMessage());
+    } catch (Exception $e) {
+        error_log("Failed to alter meals table column (portion): " . $e->getMessage());
     }
 
     try {
@@ -238,41 +210,44 @@ function ensure_meals_table_exists($pdo) {
         // index creation error ignored
     }
 
-    return true;
+    // Step 3: Strict check that portion column exists
+    try {
+        $pdo->query("SELECT portion FROM meals LIMIT 0");
+        return true;
+    } catch (Exception $e) {
+        error_log("Strict schema check failed: column 'portion' is missing from 'meals': " . $e->getMessage());
+        return false;
+    }
 }
 
 /**
- * Ensure that the favorites table exists in PostgreSQL.
+ * Ensure that the favorites table exists in PostgreSQL and has all required columns.
  *
  * @param PDO $pdo
- * @return bool Returns true if table exists or was created successfully, false on error.
+ * @return bool Returns true if table and portion column exist, false on error.
  */
 function ensure_favorites_table_exists($pdo) {
     try {
-        $pdo->query("SELECT 1 FROM favorites LIMIT 0");
+        $createSql = "
+            CREATE TABLE IF NOT EXISTS favorites (
+                id BIGSERIAL PRIMARY KEY,
+                account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                meal_id BIGINT NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
+                title VARCHAR(255) NOT NULL DEFAULT 'Mahlzeit',
+                image_filename VARCHAR(255) DEFAULT '',
+                ingredients TEXT,
+                health_rating TEXT,
+                calories INTEGER NOT NULL DEFAULT 0,
+                portion INTEGER NOT NULL DEFAULT 100,
+                consumed_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                last_used_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT unique_user_meal_fav UNIQUE (account_id, meal_id)
+            );
+        ";
+        $pdo->exec($createSql);
     } catch (Exception $e) {
-        try {
-            $createSql = "
-                CREATE TABLE IF NOT EXISTS favorites (
-                    id BIGSERIAL PRIMARY KEY,
-                    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-                    meal_id BIGINT NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
-                    title VARCHAR(255) NOT NULL DEFAULT 'Mahlzeit',
-                    image_filename VARCHAR(255) DEFAULT '',
-                    ingredients TEXT,
-                    health_rating TEXT,
-                    calories INTEGER NOT NULL DEFAULT 0,
-                    portion INTEGER NOT NULL DEFAULT 100,
-                    consumed_at TIMESTAMPTZ,
-                    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-                    last_used_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-                    CONSTRAINT unique_user_meal_fav UNIQUE (account_id, meal_id)
-                );
-            ";
-            $pdo->exec($createSql);
-        } catch (Exception $ex) {
-            error_log("Failed to create favorites table: " . $ex->getMessage());
-        }
+        error_log("Failed to create favorites table: " . $e->getMessage());
     }
 
     try {
@@ -283,7 +258,7 @@ function ensure_favorites_table_exists($pdo) {
     }
 
     try {
-        $pdo->exec("ALTER TABLE favorites ADD COLUMN IF NOT EXISTS portion INTEGER DEFAULT 100;");
+        $pdo->exec("ALTER TABLE favorites ADD COLUMN IF NOT EXISTS portion INTEGER NOT NULL DEFAULT 100;");
         $pdo->exec("UPDATE favorites SET portion = 100 WHERE portion IS NULL;");
     } catch (Exception $ex) {
         error_log("Failed to alter favorites table column (portion): " . $ex->getMessage());
@@ -296,7 +271,14 @@ function ensure_favorites_table_exists($pdo) {
         // index creation error ignored
     }
 
-    return true;
+    // Step 3: Strict check that portion column exists
+    try {
+        $pdo->query("SELECT portion FROM favorites LIMIT 0");
+        return true;
+    } catch (Exception $e) {
+        error_log("Strict schema check failed: column 'portion' is missing from 'favorites': " . $e->getMessage());
+        return false;
+    }
 }
 ?>
 
