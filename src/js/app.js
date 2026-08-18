@@ -274,7 +274,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Render Validation Screen
-  function renderValidationView() {
+  function renderValidationView(pushState = true) {
     if (mealPhotoPreview) mealPhotoPreview.src = currentAnalysis.photoPath;
     if (mealTitle) mealTitle.textContent = currentAnalysis.title;
 
@@ -288,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderAiModelInfo();
 
     // Render portion & calories
-    if (fieldPortion) fieldPortion.value = '100';
+    if (fieldPortion) fieldPortion.value = String(currentAnalysis.portion || 100);
     if (fieldCalories) fieldCalories.value = currentAnalysis.currentCalories;
     if (fieldNotes) fieldNotes.value = '';
 
@@ -435,6 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentAnalysis.ingredients.forEach(ing => saveFormData.append('ingredients[]', ing));
         saveFormData.append('health_rating', currentAnalysis.healthRating);
         saveFormData.append('calories', currentAnalysis.currentCalories);
+        saveFormData.append('portion', currentAnalysis.portion || 100);
 
         try {
           const response = await fetch('index.php', {
@@ -817,12 +818,15 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         day.meals.forEach((meal) => {
           const mealKcal = Number(meal.calories || 0).toLocaleString('de-DE');
+          const mealPortion = Number(meal.portion || 100);
           const jsonStr = escapeHtml(JSON.stringify(meal));
           html += `
             <div class="history-meal-item" data-meal-id="${meal.id}" data-meal='${jsonStr}'>
               <div class="meal-item-title">${escapeHtml(meal.title || 'Mahlzeit')}</div>
               <div class="meal-item-sub">
                 <span>⏰ ${escapeHtml(meal.time_formatted)} Uhr</span>
+                <span>•</span>
+                <span>🍽️ ${mealPortion} %</span>
                 <span>•</span>
                 <span>🔥 ${mealKcal} kcal</span>
               </div>
@@ -1112,6 +1116,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const modalMealTitle = document.getElementById('modal-meal-title');
   const modalMealDatetime = document.getElementById('modal-meal-datetime');
   const modalMealCalories = document.getElementById('modal-meal-calories');
+  const modalMealPortion = document.getElementById('modal-meal-portion');
   const modalMealHealth = document.getElementById('modal-meal-health');
   const modalIngredientsChips = document.getElementById('modal-ingredients-chips');
   const modalImageContainer = document.getElementById('modal-image-container');
@@ -1139,6 +1144,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (modalMealTitle) modalMealTitle.textContent = meal.title || 'Mahlzeit';
     if (modalMealDatetime) modalMealDatetime.textContent = meal.full_datetime_formatted || meal.consumed_at;
+    if (modalMealPortion) modalMealPortion.textContent = `${Number(meal.portion || 100)} %`;
     if (modalMealCalories) modalMealCalories.textContent = `${Number(meal.calories || 0).toLocaleString('de-DE')} kcal`;
     if (modalMealHealth) modalMealHealth.innerHTML = formatAiText(meal.health_rating || 'Keine Angabe');
 
@@ -1416,6 +1422,7 @@ document.addEventListener('DOMContentLoaded', () => {
           itemEl.className = 'favorite-item-compact';
 
           const calories = Number(fav.calories || 0).toLocaleString('de-DE');
+          const portion = Number(fav.portion || 100);
           let ingredientsText = 'Keine Zutaten angegeben';
           if (fav.ingredients) {
             if (typeof fav.ingredients === 'string') {
@@ -1431,6 +1438,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <div class="fav-item-ingredients">${escapeHtml(ingredientsText)}</div>
             </div>
             <div class="fav-item-meta">
+              <span class="fav-portion-badge">🍽️ ${portion} %</span>
               <span class="fav-kcal-badge">🔥 ${calories} kcal</span>
             </div>
           `;
@@ -1532,14 +1540,18 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
+    const favPortion = parseInt(fav.portion, 10) || 100;
+    const favCalories = parseInt(fav.calories || 0, 10);
+    const baseCalories = favPortion > 0 ? Math.round(favCalories * (100 / favPortion)) : favCalories;
+
     currentAnalysis = {
       photoPath: fav.image_url ? fav.image_url : '',
       title: fav.title || 'Mahlzeit',
       ingredients: ingredientsArr,
       healthRating: fav.health_rating || '',
-      baseCalories: parseInt(fav.calories || 0, 10),
-      currentCalories: parseInt(fav.calories || 0, 10),
-      portion: 100,
+      baseCalories: baseCalories,
+      currentCalories: favCalories,
+      portion: favPortion,
       notes: '',
       model: 'Favorit-Vorlage ⭐',
       attempts: 1,

@@ -254,7 +254,7 @@ if ($isAjaxRequest) {
 
         try {
             $stmt = $pdo->prepare("
-                SELECT id, meal_id, title, image_filename, ingredients, health_rating, calories, consumed_at, created_at, last_used_at
+                SELECT id, meal_id, title, image_filename, ingredients, health_rating, calories, portion, consumed_at, created_at, last_used_at
                 FROM favorites
                 WHERE account_id = :account_id
                 ORDER BY COALESCE(last_used_at, created_at) DESC, id DESC
@@ -281,6 +281,7 @@ if ($isAjaxRequest) {
                     'ingredients' => $row['ingredients'],
                     'health_rating' => $row['health_rating'],
                     'calories' => (int)$row['calories'],
+                    'portion' => (int)($row['portion'] ?? 100),
                     'consumed_at' => $row['consumed_at']
                 ];
             }
@@ -323,7 +324,7 @@ if ($isAjaxRequest) {
 
         try {
             $stmt = $pdo->prepare("
-                SELECT m.id, m.account_id, m.consumed_at, m.title, m.image_filename, m.ai_model, m.ai_attempts, m.processing_time_ms, m.ingredients, m.health_rating, m.calories, m.created_at,
+                SELECT m.id, m.account_id, m.consumed_at, m.title, m.image_filename, m.ai_model, m.ai_attempts, m.processing_time_ms, m.ingredients, m.health_rating, m.calories, m.portion, m.created_at,
                        (CASE WHEN f.id IS NOT NULL THEN 1 ELSE 0 END) AS is_favorite
                 FROM meals m
                 LEFT JOIN favorites f ON f.meal_id = m.id AND f.account_id = m.account_id
@@ -362,6 +363,7 @@ if ($isAjaxRequest) {
                     'time_formatted' => date('H:i', strtotime($row['consumed_at'])),
                     'full_datetime_formatted' => date('d.m.Y, H:i', strtotime($row['consumed_at'])) . ' Uhr',
                     'calories' => (int)$row['calories'],
+                    'portion' => (int)($row['portion'] ?? 100),
                     'ingredients' => $row['ingredients'],
                     'health_rating' => $row['health_rating'],
                     'image_filename' => $row['image_filename'],
@@ -704,11 +706,12 @@ if ($isAjaxRequest) {
         $ingredientsStr = is_array($ingredientsInput) ? implode(', ', array_filter(array_map('trim', $ingredientsInput))) : trim((string)$ingredientsInput);
         $healthRating = $_POST['health_rating'] ?? '';
         $calories = max(0, (int)($_POST['calories'] ?? 0));
+        $portion = max(1, min(500, (int)($_POST['portion'] ?? 100)));
 
         try {
             $stmt = $pdo->prepare("
-                INSERT INTO meals (account_id, consumed_at, title, image_filename, ai_model, ai_attempts, processing_time_ms, ingredients, health_rating, calories)
-                VALUES (:account_id, :consumed_at, :title, :image_filename, :ai_model, :ai_attempts, :processing_time_ms, :ingredients, :health_rating, :calories)
+                INSERT INTO meals (account_id, consumed_at, title, image_filename, ai_model, ai_attempts, processing_time_ms, ingredients, health_rating, calories, portion)
+                VALUES (:account_id, :consumed_at, :title, :image_filename, :ai_model, :ai_attempts, :processing_time_ms, :ingredients, :health_rating, :calories, :portion)
             ");
             $stmt->execute([
                 'account_id' => $_SESSION['user_id'],
@@ -720,7 +723,8 @@ if ($isAjaxRequest) {
                 'processing_time_ms' => $processingTimeMs,
                 'ingredients' => $ingredientsStr,
                 'health_rating' => $healthRating,
-                'calories' => $calories
+                'calories' => $calories,
+                'portion' => $portion
             ]);
 
             echo json_encode([
@@ -843,7 +847,7 @@ if ($isAjaxRequest) {
                 ]);
                 exit;
             } else {
-                $stmtMeal = $pdo->prepare("SELECT title, image_filename, ingredients, health_rating, calories, consumed_at FROM meals WHERE id = :id AND account_id = :account_id");
+                $stmtMeal = $pdo->prepare("SELECT title, image_filename, ingredients, health_rating, calories, portion, consumed_at FROM meals WHERE id = :id AND account_id = :account_id");
                 $stmtMeal->execute([
                     'id' => $mealId,
                     'account_id' => $_SESSION['user_id']
@@ -856,9 +860,12 @@ if ($isAjaxRequest) {
                 }
 
                 $stmtInsFav = $pdo->prepare("
-                    INSERT INTO favorites (account_id, meal_id, title, image_filename, ingredients, health_rating, calories, consumed_at, last_used_at)
-                    VALUES (:account_id, :meal_id, :title, :image_filename, :ingredients, :health_rating, :calories, :consumed_at, CURRENT_TIMESTAMP)
-                    ON CONFLICT (account_id, meal_id) DO UPDATE SET last_used_at = CURRENT_TIMESTAMP
+                    INSERT INTO favorites (account_id, meal_id, title, image_filename, ingredients, health_rating, calories, portion, consumed_at, last_used_at)
+                    VALUES (:account_id, :meal_id, :title, :image_filename, :ingredients, :health_rating, :calories, :portion, :consumed_at, CURRENT_TIMESTAMP)
+                    ON CONFLICT (account_id, meal_id) DO UPDATE SET
+                        last_used_at = CURRENT_TIMESTAMP,
+                        portion = EXCLUDED.portion,
+                        calories = EXCLUDED.calories
                 ");
                 $stmtInsFav->execute([
                     'account_id' => $_SESSION['user_id'],
@@ -868,6 +875,7 @@ if ($isAjaxRequest) {
                     'ingredients' => $mealData['ingredients'] ?? '',
                     'health_rating' => $mealData['health_rating'] ?? '',
                     'calories' => (int)($mealData['calories'] ?? 0),
+                    'portion' => (int)($mealData['portion'] ?? 100),
                     'consumed_at' => $mealData['consumed_at'] ?? date('Y-m-d H:i:sP')
                 ]);
 
@@ -1229,6 +1237,9 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                         <div class="form-group col-half">
                             <label for="field-portion" class="form-label">🍽️ Verzehrmenge</label>
                             <select id="field-portion" class="form-control">
+                                <option value="1">1 %</option>
+                                <option value="2">2 %</option>
+                                <option value="5">5 %</option>
                                 <option value="10">10 %</option>
                                 <option value="20">20 %</option>
                                 <option value="30">30 %</option>
@@ -1239,6 +1250,10 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                                 <option value="80">80 %</option>
                                 <option value="90">90 %</option>
                                 <option value="100" selected>100 % (Gesamt)</option>
+                                <option value="125">125 %</option>
+                                <option value="150">150 %</option>
+                                <option value="175">175 %</option>
+                                <option value="200">200 %</option>
                             </select>
                         </div>
                         <div class="form-group col-half">
@@ -1345,6 +1360,10 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                 <div class="modal-section">
                     <h3>💚 Wertigkeit & Wohlbefinden</h3>
                     <div id="modal-meal-health" class="health-rating-box modal-health-box">-</div>
+                </div>
+                <div class="modal-section">
+                    <h3>🍽️ Verzehrmenge</h3>
+                    <div id="modal-meal-portion" class="modal-portion-box">100 %</div>
                 </div>
                 <div class="modal-section">
                     <h3>🔥 Kalorien</h3>

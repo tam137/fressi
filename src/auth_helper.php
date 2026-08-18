@@ -166,12 +166,12 @@ function rotate_remember_token($pdo, $token_id, $account_id) {
  * @return bool Returns true if table exists or was created successfully, false on error.
  */
 function ensure_meals_table_exists($pdo) {
-    // Fast path: Check if table already exists and is accessible
+    // Fast path: Check if table and portion column already exist and are accessible
     try {
-        $pdo->query("SELECT 1 FROM meals LIMIT 0");
+        $pdo->query("SELECT portion FROM meals LIMIT 0");
         return true;
     } catch (Exception $e) {
-        // Table does not exist or is not accessible yet, proceed to create
+        // Table or column does not exist, proceed to create/alter
     }
 
     try {
@@ -189,6 +189,7 @@ function ensure_meals_table_exists($pdo) {
                 ingredients TEXT,
                 health_rating TEXT,
                 calories INTEGER NOT NULL DEFAULT 0,
+                portion INTEGER NOT NULL DEFAULT 100,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
         ";
@@ -206,6 +207,7 @@ function ensure_meals_table_exists($pdo) {
             "ingredients TEXT",
             "health_rating TEXT",
             "calories INTEGER DEFAULT 0",
+            "portion INTEGER DEFAULT 100",
             "created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP"
         ];
 
@@ -215,6 +217,12 @@ function ensure_meals_table_exists($pdo) {
             } catch (Exception $ex) {
                 error_log("Failed to alter meals table column ($colDef): " . $ex->getMessage());
             }
+        }
+
+        try {
+            $pdo->exec("UPDATE meals SET portion = 100 WHERE portion IS NULL;");
+        } catch (Exception $ex) {
+            error_log("Failed to update meals portion default: " . $ex->getMessage());
         }
 
         // Step 3: Create index
@@ -235,7 +243,7 @@ function ensure_meals_table_exists($pdo) {
 function ensure_favorites_table_exists($pdo) {
     try {
         // Fast path: ensure column exists
-        $pdo->query("SELECT last_used_at FROM favorites LIMIT 0");
+        $pdo->query("SELECT portion FROM favorites LIMIT 0");
         return true;
     } catch (Exception $e) {
         // Table or column missing, proceed to create/alter
@@ -252,6 +260,7 @@ function ensure_favorites_table_exists($pdo) {
                 ingredients TEXT,
                 health_rating TEXT,
                 calories INTEGER NOT NULL DEFAULT 0,
+                portion INTEGER NOT NULL DEFAULT 100,
                 consumed_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 last_used_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -265,6 +274,13 @@ function ensure_favorites_table_exists($pdo) {
             $pdo->exec("UPDATE favorites SET last_used_at = created_at WHERE last_used_at IS NULL;");
         } catch (Exception $ex) {
             error_log("Failed to alter favorites table column (last_used_at): " . $ex->getMessage());
+        }
+
+        try {
+            $pdo->exec("ALTER TABLE favorites ADD COLUMN IF NOT EXISTS portion INTEGER DEFAULT 100;");
+            $pdo->exec("UPDATE favorites SET portion = 100 WHERE portion IS NULL;");
+        } catch (Exception $ex) {
+            error_log("Failed to alter favorites table column (portion): " . $ex->getMessage());
         }
 
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_favorites_user_meal ON favorites(account_id, meal_id);");
