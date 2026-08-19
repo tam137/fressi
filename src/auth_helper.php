@@ -24,13 +24,14 @@ if (file_exists(__DIR__ . '/../config.php')) {
 } elseif (file_exists('/var/www/fressi_config.php')) {
     require_once '/var/www/fressi_config.php';
 } else {
-    $db_config = [
-        'host' => '127.0.0.1',
-        'port' => '5433',
-        'dbname' => 'fressi',
-        'user' => 'web_login_user',
-        'password' => 'YOUR_DATABASE_PASSWORD_HERE'
-    ];
+    $is_ajax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || isset($_POST['ajax_upload']);
+    if ($is_ajax) {
+        header('Content-Type: application/json');
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Konfigurationsdatei config.php nicht gefunden. Bitte config.example.php als Vorlage nutzen.']);
+        exit;
+    }
+    die("Konfigurationsdatei config.php nicht gefunden. Bitte kopiere config.example.php nach config.php und trage deine Zugangsdaten ein.");
 }
 
 /**
