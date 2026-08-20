@@ -698,6 +698,10 @@ body.is-validation-mode .camera-main {
   box-shadow: var(--shadow-sm);
 }
 
+select.form-control {
+  cursor: pointer;
+}
+
 textarea.form-control {
   resize: vertical;
   min-height: 80px;
@@ -711,6 +715,7 @@ textarea.form-control {
 
 .col-half {
   flex: 1;
+  min-width: 0;
 }
 
 .input-unit-wrapper {

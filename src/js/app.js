@@ -36,7 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Form Fields
   const mealPhotoPreview = document.getElementById('meal-photo-preview');
   const mealTitle = document.getElementById('meal-title');
-  const fieldDatetime = document.getElementById('field-datetime');
+  const fieldDate = document.getElementById('field-date');
+  const fieldTime = document.getElementById('field-time');
   const ingredientsChips = document.getElementById('ingredients-chips');
   const addIngredientInput = document.getElementById('add-ingredient-input');
   const btnAddIngredient = document.getElementById('btn-add-ingredient');
@@ -129,20 +130,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Helper: Get formatted ISO string for datetime-local rounded to 15 mins
-  function getFormatted15MinDateTime() {
+  // Helper: Get formatted ISO string for date (YYYY-MM-DD)
+  function getCurrentDateISO() {
     const now = new Date();
-    const minutes = now.getMinutes();
-    const roundedMinutes = Math.floor(minutes / 15) * 15;
-    now.setMinutes(roundedMinutes, 0, 0);
-
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const mins = String(now.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
 
-    return `${year}-${month}-${day}T${hours}:${mins}`;
+  // Helper: Get formatted time rounded to 15 mins (HH:MM)
+  function getCurrent15MinTimeHHMM() {
+    const now = new Date();
+    const minutes = now.getMinutes();
+    const roundedMinutes = Math.floor(minutes / 15) * 15;
+    const hours = String(now.getHours()).padStart(2, '0');
+    const mins = String(roundedMinutes).padStart(2, '0');
+    return `${hours}:${mins}`;
   }
 
   // Camera & Photo Gallery Upload Handling
@@ -278,8 +282,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (mealPhotoPreview) mealPhotoPreview.src = currentAnalysis.photoPath;
     if (mealTitle) mealTitle.textContent = currentAnalysis.title;
 
-    // Date & time preset (current time in 15min steps)
-    if (fieldDatetime) fieldDatetime.value = getFormatted15MinDateTime();
+    // Date & time preset (current date & current time in 15min steps)
+    if (fieldDate) fieldDate.value = getCurrentDateISO();
+    if (fieldTime) fieldTime.value = getCurrent15MinTimeHHMM();
 
     // Render health rating
     if (healthRatingDisplay) healthRatingDisplay.innerHTML = formatAiText(currentAnalysis.healthRating);
@@ -426,7 +431,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const saveFormData = new FormData();
         saveFormData.append('action', 'save_meal');
-        saveFormData.append('consumed_at', fieldDatetime ? fieldDatetime.value : '');
+        let consumedAt = '';
+        if (fieldDate && fieldTime && fieldDate.value && fieldTime.value) {
+          consumedAt = `${fieldDate.value}T${fieldTime.value}`;
+        } else if (fieldDate && fieldDate.value) {
+          consumedAt = fieldDate.value;
+        }
+        saveFormData.append('consumed_at', consumedAt);
         saveFormData.append('title', currentAnalysis.title);
         saveFormData.append('photo_path', currentAnalysis.photoPath);
         saveFormData.append('ai_model', currentAnalysis.model);

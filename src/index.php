@@ -125,7 +125,7 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
 
     $base64Image = base64_encode($imageData);
 
-    $models = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'];
+    $models = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
     $maxPasses = 3;
     $attemptCount = 0;
     $lastError = 'Unbekannter Fehler';
@@ -180,7 +180,7 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             $curlErr  = curl_error($ch);
-            curl_close($ch);
+            unset($ch);
 
             if ($response === false || !empty($curlErr)) {
                 $lastError = 'Verbindung zur Gemini API fehlgeschlagen: ' . ($curlErr ?: 'Unbekannter Fehler');
@@ -1249,8 +1249,22 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                 <form id="validation-form" class="validation-form" onsubmit="return false;">
                     <!-- Date & Time Input (15-min interval) -->
                     <div class="form-group">
-                        <label for="field-datetime" class="form-label">📅 Datum & Uhrzeit der Anfrage</label>
-                        <input type="datetime-local" id="field-datetime" class="form-control" step="900">
+                        <label class="form-label">📅 Datum &amp; Uhrzeit der Mahlzeit</label>
+                        <div class="form-row">
+                            <div class="col-half">
+                                <input type="date" id="field-date" class="form-control" required>
+                            </div>
+                            <div class="col-half">
+                                <select id="field-time" class="form-control" required>
+                                    <?php for ($h = 0; $h < 24; $h++): ?>
+                                        <?php for ($m = 0; $m < 60; $m += 15): ?>
+                                            <?php $t = sprintf('%02d:%02d', $h, $m); ?>
+                                            <option value="<?= $t ?>"><?= $t ?> Uhr</option>
+                                        <?php endfor; ?>
+                                    <?php endfor; ?>
+                                </select>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Editable Ingredients -->
