@@ -1111,10 +1111,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const colClass = `bar-column ${isPeak ? 'is-peak' : ''} ${isZero ? 'is-zero' : ''}`;
         const mealWord = item.meal_count === 1 ? 'Mahlzeit' : 'Mahlzeiten';
         const tooltip = `${escapeHtml(item.weekday_full)}, ${escapeHtml(item.formatted_date)}: ${cal.toLocaleString('de-DE')} kcal (${item.meal_count} ${mealWord})`;
+        const displayVal = isZero ? '0' : (cal / 1000).toFixed(1);
 
         dailyHtml += `
           <div class="${colClass}" title="${tooltip}">
-            <div class="bar-val">${isZero ? '0' : cal}</div>
+            <div class="bar-val">${displayVal}</div>
             <div class="bar-track">
               <div class="bar-fill" style="height: ${pct}%;"></div>
             </div>
