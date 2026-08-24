@@ -923,6 +923,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const statsStatus = document.getElementById('stats-status');
   const statsContentArea = document.getElementById('stats-content-area');
   const statsKpiContainer = document.getElementById('stats-kpi-container');
+  const chartDailyContainer = document.getElementById('chart-daily-container');
   const chartIntervalsContainer = document.getElementById('chart-intervals-container');
   const chartWeekdaysContainer = document.getElementById('chart-weekdays-container');
 
@@ -1038,6 +1039,13 @@ document.addEventListener('DOMContentLoaded', () => {
         <div id="stats-kpi-container" class="stats-kpi-grid"></div>
         <div class="stats-chart-section">
           <div class="stats-chart-header">
+            <h2 class="stats-chart-title">📈 Letzte 14 Tage</h2>
+            <span class="stats-chart-subtitle">kcal pro Tag</span>
+          </div>
+          <div id="chart-daily-container" class="css-chart-container"></div>
+        </div>
+        <div class="stats-chart-section">
+          <div class="stats-chart-header">
             <h2 class="stats-chart-title">🕒 Nach Tageszeit</h2>
             <span class="stats-chart-subtitle">Ø kcal im 3-Stunden-Intervall</span>
           </div>
@@ -1054,6 +1062,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const kpiContainer = document.getElementById('stats-kpi-container');
+    const dailyContainer = document.getElementById('chart-daily-container');
     const intervalsContainer = document.getElementById('chart-intervals-container');
     const weekdaysContainer = document.getElementById('chart-weekdays-container');
 
@@ -1085,7 +1094,42 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
     }
 
-    // 2. Daytime Intervals Chart (8 bars)
+    // 2. Last 14 Days Chart (14 bars)
+    if (dailyContainer) {
+      const daily14 = data.daily_14d || [];
+      let maxDailyVal = 0;
+      daily14.forEach(item => {
+        if (item.total_calories > maxDailyVal) maxDailyVal = item.total_calories;
+      });
+
+      let dailyHtml = '<div class="css-bar-chart css-bar-chart-14d">';
+      daily14.forEach(item => {
+        const cal = item.total_calories || 0;
+        const isPeak = maxDailyVal > 0 && cal === maxDailyVal;
+        const isZero = cal === 0;
+        const pct = maxDailyVal > 0 ? Math.max(4, Math.round((cal / maxDailyVal) * 100)) : 0;
+        const colClass = `bar-column ${isPeak ? 'is-peak' : ''} ${isZero ? 'is-zero' : ''}`;
+        const mealWord = item.meal_count === 1 ? 'Mahlzeit' : 'Mahlzeiten';
+        const tooltip = `${escapeHtml(item.weekday_full)}, ${escapeHtml(item.formatted_date)}: ${cal.toLocaleString('de-DE')} kcal (${item.meal_count} ${mealWord})`;
+
+        dailyHtml += `
+          <div class="${colClass}" title="${tooltip}">
+            <div class="bar-val">${isZero ? '0' : cal}</div>
+            <div class="bar-track">
+              <div class="bar-fill" style="height: ${pct}%;"></div>
+            </div>
+            <div class="bar-label bar-label-2line">
+              <span class="bar-label-top">${escapeHtml(item.weekday_short)}</span>
+              <span class="bar-label-bottom">${escapeHtml(String(item.day))}</span>
+            </div>
+          </div>
+        `;
+      });
+      dailyHtml += '</div>';
+      dailyContainer.innerHTML = dailyHtml;
+    }
+
+    // 3. Daytime Intervals Chart (8 bars)
     if (intervalsContainer) {
       const intervals = data.intervals || [];
       let maxIntervalVal = 0;
@@ -1115,7 +1159,7 @@ document.addEventListener('DOMContentLoaded', () => {
       intervalsContainer.innerHTML = intervalsHtml;
     }
 
-    // 3. Weekdays Chart (7 bars)
+    // 4. Weekdays Chart (7 bars)
     if (weekdaysContainer) {
       const weekdays = data.weekdays || [];
       let maxWeekdayVal = 0;

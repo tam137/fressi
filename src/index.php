@@ -536,6 +536,23 @@ if ($isAjaxRequest) {
                 $weekdayDates[$w] = [];
             }
 
+            // Initialize Last 14 Days (excluding today: -14 days to -1 day)
+            $daily14Stats = [];
+            for ($d = 14; $d >= 1; $d--) {
+                $ts = strtotime("-{$d} days");
+                $dateKey = date('Y-m-d', $ts);
+                $isoDow = (int)date('N', $ts);
+                $daily14Stats[$dateKey] = [
+                    'date' => $dateKey,
+                    'weekday_short' => $weekdayNames[$isoDow]['short'],
+                    'weekday_full' => $weekdayNames[$isoDow]['full'],
+                    'day' => (int)date('j', $ts),
+                    'formatted_date' => date('d.m.Y', $ts),
+                    'total_calories' => 0,
+                    'meal_count' => 0
+                ];
+            }
+
             $totalCalories = 0;
             $totalMeals = count($rows);
             $distinctDays = [];
@@ -549,6 +566,11 @@ if ($isAjaxRequest) {
 
                 $totalCalories += $cal;
                 $distinctDays[$dateKey] = true;
+
+                if (isset($daily14Stats[$dateKey])) {
+                    $daily14Stats[$dateKey]['total_calories'] += $cal;
+                    $daily14Stats[$dateKey]['meal_count']++;
+                }
 
                 $slot = (int)floor($hour / 3);
                 if ($slot >= 0 && $slot <= 7) {
@@ -622,6 +644,7 @@ if ($isAjaxRequest) {
                     'total_calories' => $totalCalories,
                     'active_days' => $activeDaysCount
                 ],
+                'daily_14d' => array_values($daily14Stats),
                 'intervals' => array_values($intervalStats),
                 'weekdays' => array_values($weekdayStats)
             ]);
@@ -1497,6 +1520,15 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                 <div id="stats-content-area" class="stats-content-area">
                     <!-- KPI Summary Grid -->
                     <div id="stats-kpi-container" class="stats-kpi-grid"></div>
+
+                    <!-- Chart 0: Last 14 Days -->
+                    <div class="stats-chart-section">
+                        <div class="stats-chart-header">
+                            <h2 class="stats-chart-title">📈 Letzte 14 Tage</h2>
+                            <span class="stats-chart-subtitle">kcal pro Tag</span>
+                        </div>
+                        <div id="chart-daily-container" class="css-chart-container"></div>
+                    </div>
 
                     <!-- Chart 1: Time of Day (3-hour intervals) -->
                     <div class="stats-chart-section">
