@@ -859,6 +859,10 @@ if ($isAjaxRequest) {
                     exit;
                 }
 
+                $mealPortion = max(1, (int)($mealData['portion'] ?? 100));
+                $mealCalories = (int)($mealData['calories'] ?? 0);
+                $baseCalories = (int)round($mealCalories * (100 / $mealPortion));
+
                 $stmtInsFav = $pdo->prepare("
                     INSERT INTO favorites (account_id, meal_id, title, image_filename, ingredients, health_rating, calories, portion, consumed_at, last_used_at)
                     VALUES (:account_id, :meal_id, :title, :image_filename, :ingredients, :health_rating, :calories, :portion, :consumed_at, CURRENT_TIMESTAMP)
@@ -874,8 +878,8 @@ if ($isAjaxRequest) {
                     'image_filename' => $mealData['image_filename'] ?? '',
                     'ingredients' => $mealData['ingredients'] ?? '',
                     'health_rating' => $mealData['health_rating'] ?? '',
-                    'calories' => (int)($mealData['calories'] ?? 0),
-                    'portion' => (int)($mealData['portion'] ?? 100),
+                    'calories' => $baseCalories,
+                    'portion' => 100,
                     'consumed_at' => $mealData['consumed_at'] ?? date('Y-m-d H:i:sP')
                 ]);
 
