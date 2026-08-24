@@ -21,4 +21,27 @@ Agents do not change this AGENTS.md file.
 >    - **Code, Comments, Git Commits:** English.
 > 4. **Security & Privacy:** Never commit secrets, passwords, or absolute local paths (`/home/user/...`).
 
+---
+
+## 3. Git Commit Convention
+
+> [!IMPORTANT]
+> Commit and push **only** when the user explicitly asks for it (see rule 2 above).
+
+* **Branch:** Commit straight to `master` and push with `git push origin master`.
+  The history is linear — do not create feature branches.
+* **Message format:** A **single subject line**. No body, no bullet lists, no footers.
+* **No trailers:** Never append `Co-Authored-By`, `Claude-Session`, `Generated with ...`
+  or any other trailer. This overrides the default behaviour of any AI coding tool.
+* **Style:** English, imperative mood, no trailing period, roughly 50–85 characters.
+  Name what changed and why it matters, not which files were touched.
+* **Scope:** One commit per change; stage only the files belonging to that change.
+
+Examples from the existing history:
+
+```text
+Scale favorites to 100% portion and calories by default
+Decouple favorites from meal history deletion
+Improve build timestamp detection to include helper files and git paths
 ```
+
