@@ -84,14 +84,23 @@ function normalize_image_for_gemini($filePath, $mimeType) {
 }
 
 /**
- * Analysiert ein Bild mittels Google Gemini API.
- * 
- * @param string $filePath Pfad zur Bilddatei
- * @param string $mimeType MIME-Typ des Bildes
+ * Lädt die Prompt-Vorlagen aus prompts.php.
+ *
+ * @return array Assoziatives Array aller Prompts (leer, falls die Datei fehlt)
+ */
+function load_ai_prompts() {
+    $promptsFile = __DIR__ . '/prompts.php';
+    return file_exists($promptsFile) ? require $promptsFile : [];
+}
+
+/**
+ * Führt einen Gemini API Call aus (Modell-Fallback, Wiederholungen, JSON-Validierung).
+ *
  * @param string $promptText Prompt für die Analyse
+ * @param array|null $inlineImagePart Optionaler `inline_data` Part für Bildanalysen
  * @return array ['success' => bool, 'data' => array|null, 'error' => string|null]
  */
-function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
+function call_gemini_api($promptText, $inlineImagePart = null) {
     global $gemini_key, $config, $db_config;
     $apiKey = $gemini_key ?? ($config['gemini_key'] ?? ($db_config['gemini_key'] ?? (getenv('gemini_key') ?: (getenv('GEMINI_KEY') ?: null))));
 
@@ -102,28 +111,12 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
         ];
     }
 
-    if (!file_exists($filePath)) {
-        return [
-            'success' => false,
-            'error' => 'Bilddatei konnte für die Analyse nicht gefunden werden.'
-        ];
+    $parts = [
+        ['text' => $promptText]
+    ];
+    if ($inlineImagePart !== null) {
+        $parts[] = $inlineImagePart;
     }
-
-    $normalized = normalize_image_for_gemini($filePath, $mimeType);
-    $activePath = $normalized['path'];
-    $activeMime = $normalized['mime'];
-    $isTempFile = $normalized['is_temp'];
-
-    $imageData = file_get_contents($activePath);
-    if ($imageData === false) {
-        if ($isTempFile && file_exists($activePath)) { @unlink($activePath); }
-        return [
-            'success' => false,
-            'error' => 'Bilddatei konnte nicht gelesen werden.'
-        ];
-    }
-
-    $base64Image = base64_encode($imageData);
 
     $models = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
     $maxPasses = 3;
@@ -144,17 +137,7 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
             $payload = [
                 'contents' => [
                     [
-                        'parts' => [
-                            [
-                                'text' => $promptText
-                            ],
-                            [
-                                'inline_data' => [
-                                    'mime_type' => $activeMime,
-                                    'data' => $base64Image
-                                ]
-                            ]
-                        ]
+                        'parts' => $parts
                     ]
                 ],
                 'tools' => [
@@ -201,8 +184,6 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
             $rawText = $responseData['candidates'][0]['content']['parts'][0]['text'] ?? null;
 
             if (!empty($rawText)) {
-                if ($isTempFile && file_exists($activePath)) { @unlink($activePath); }
-
                 // Clean Markdown JSON block wrapper if returned
                 $cleanedJson = preg_replace('/^```(?:json)?\s*/i', '', trim($rawText));
                 $cleanedJson = preg_replace('/\s*```$/', '', $cleanedJson);
@@ -226,12 +207,58 @@ function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
         }
     }
 
-    if ($isTempFile && file_exists($activePath)) { @unlink($activePath); }
-
     return [
         'success' => false,
         'error' => "Fehler nach {$attemptCount} Versuchen: " . $lastError
     ];
+}
+
+/**
+ * Analysiert ein Bild mittels Google Gemini API.
+ *
+ * @param string $filePath Pfad zur Bilddatei
+ * @param string $mimeType MIME-Typ des Bildes
+ * @param string $promptText Prompt für die Analyse
+ * @return array ['success' => bool, 'data' => array|null, 'error' => string|null]
+ */
+function analyze_image_with_gemini($filePath, $mimeType, $promptText) {
+    if (!file_exists($filePath)) {
+        return [
+            'success' => false,
+            'error' => 'Bilddatei konnte für die Analyse nicht gefunden werden.'
+        ];
+    }
+
+    $normalized = normalize_image_for_gemini($filePath, $mimeType);
+    $imageData = file_get_contents($normalized['path']);
+
+    if ($normalized['is_temp'] && file_exists($normalized['path'])) {
+        @unlink($normalized['path']);
+    }
+
+    if ($imageData === false) {
+        return [
+            'success' => false,
+            'error' => 'Bilddatei konnte nicht gelesen werden.'
+        ];
+    }
+
+    return call_gemini_api($promptText, [
+        'inline_data' => [
+            'mime_type' => $normalized['mime'],
+            'data' => base64_encode($imageData)
+        ]
+    ]);
+}
+
+/**
+ * Analysiert eine reine Textbeschreibung mittels Google Gemini API (ohne Bild).
+ *
+ * @param string $promptText Prompt für die Analyse
+ * @return array ['success' => bool, 'data' => array|null, 'error' => string|null]
+ */
+function analyze_text_with_gemini($promptText) {
+    return call_gemini_api($promptText);
 }
 
 $isAjaxRequest = (
@@ -613,43 +640,61 @@ if ($isAjaxRequest) {
     // Handler 1: Refinement Loop (Nutzer hat Zutaten/Text geändert)
     if ($action === 'refine_summary') {
         $photoPath = $_POST['photo_path'] ?? '';
+        $previousTitle = trim($_POST['previous_title'] ?? '');
         $previousRating = $_POST['previous_rating'] ?? '';
         $ingredientsInput = $_POST['ingredients'] ?? '';
         $notes = $_POST['notes'] ?? '';
         $portion = (int)($_POST['portion'] ?? 100);
         $calories = (int)($_POST['calories'] ?? 0);
 
-        // Security check for photo path
-        $uploadsDir = realpath(__DIR__ . '/uploads/photos');
-        $absPath = realpath(__DIR__ . '/' . $photoPath);
-
-        if (!$absPath || !$uploadsDir || strpos($absPath, $uploadsDir) !== 0 || !file_exists($absPath)) {
-            echo json_encode(['status' => 'error', 'message' => 'Das zugehörige Foto konnte auf dem Server nicht gefunden werden.']);
-            exit;
-        }
-
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $mimeType = finfo_file($finfo, $absPath);
-        finfo_close($finfo);
-
-        $promptsFile = __DIR__ . '/prompts.php';
-        $prompts = file_exists($promptsFile) ? require $promptsFile : [];
-        $templatePrompt = $prompts['refine_analysis'] ?? '';
-
-        if (empty($templatePrompt)) {
-            echo json_encode(['status' => 'error', 'message' => 'Refinement-Prompt fehlt in prompts.php']);
-            exit;
-        }
-
+        $prompts = load_ai_prompts();
         $ingredientsStr = is_array($ingredientsInput) ? implode(', ', $ingredientsInput) : (string)$ingredientsInput;
 
-        $promptText = str_replace(
-            ['{PREVIOUS_RATING}', '{USER_INGREDIENTS}', '{USER_NOTES}', '{USER_PORTION}', '{USER_CALORIES}'],
-            [$previousRating, $ingredientsStr, $notes ?: 'Keine zusätzlichen Anmerkungen', $portion, $calories],
-            $templatePrompt
-        );
+        if ($photoPath === '') {
+            // Text-only refinement (manual entry or favorite without image)
+            $templatePrompt = $prompts['refine_text_analysis'] ?? '';
 
-        $aiResult = analyze_image_with_gemini($absPath, $mimeType, $promptText);
+            if (empty($templatePrompt)) {
+                echo json_encode(['status' => 'error', 'message' => 'Refinement-Prompt fehlt in prompts.php']);
+                exit;
+            }
+
+            $promptText = str_replace(
+                ['{PREVIOUS_TITLE}', '{PREVIOUS_RATING}', '{USER_INGREDIENTS}', '{USER_NOTES}', '{USER_PORTION}', '{USER_CALORIES}'],
+                [$previousTitle ?: 'Mahlzeit', $previousRating, $ingredientsStr, $notes ?: 'Keine zusätzlichen Anmerkungen', $portion, $calories],
+                $templatePrompt
+            );
+
+            $aiResult = analyze_text_with_gemini($promptText);
+        } else {
+            // Security check for photo path
+            $uploadsDir = realpath(__DIR__ . '/uploads/photos');
+            $absPath = realpath(__DIR__ . '/' . $photoPath);
+
+            if (!$absPath || !$uploadsDir || strpos($absPath, $uploadsDir) !== 0 || !file_exists($absPath)) {
+                echo json_encode(['status' => 'error', 'message' => 'Das zugehörige Foto konnte auf dem Server nicht gefunden werden.']);
+                exit;
+            }
+
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeType = finfo_file($finfo, $absPath);
+            finfo_close($finfo);
+
+            $templatePrompt = $prompts['refine_analysis'] ?? '';
+
+            if (empty($templatePrompt)) {
+                echo json_encode(['status' => 'error', 'message' => 'Refinement-Prompt fehlt in prompts.php']);
+                exit;
+            }
+
+            $promptText = str_replace(
+                ['{PREVIOUS_RATING}', '{USER_INGREDIENTS}', '{USER_NOTES}', '{USER_PORTION}', '{USER_CALORIES}'],
+                [$previousRating, $ingredientsStr, $notes ?: 'Keine zusätzlichen Anmerkungen', $portion, $calories],
+                $templatePrompt
+            );
+
+            $aiResult = analyze_image_with_gemini($absPath, $mimeType, $promptText);
+        }
 
         if (!$aiResult['success']) {
             echo json_encode([
@@ -663,6 +708,75 @@ if ($isAjaxRequest) {
             'status' => 'success',
             'message' => 'Wertigkeit erfolgreich von KI aktualisiert!',
             'data' => $aiResult['data'],
+            'model' => $aiResult['model'] ?? null,
+            'attempts' => $aiResult['attempts'] ?? null,
+            'duration_ms' => $aiResult['duration_ms'] ?? null
+        ]);
+        exit;
+    }
+
+    // Handler 1b: Analyse einer manuell eingegebenen Textbeschreibung (kein Foto)
+    if ($action === 'analyze_text') {
+        $description = trim($_POST['description'] ?? '');
+
+        // Strip control characters (keep newline and tab) before embedding into the prompt
+        $cleanedDescription = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u', '', $description);
+        if ($cleanedDescription !== null) {
+            $description = trim($cleanedDescription);
+        }
+
+        // mbstring is not guaranteed on every host, fall back to byte based limits
+        $hasMbstring = function_exists('mb_strlen') && function_exists('mb_substr');
+        $descriptionLength = $hasMbstring ? mb_strlen($description) : strlen($description);
+
+        if ($descriptionLength < 3) {
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Bitte beschreibe etwas genauer, was du gegessen hast.'
+            ]);
+            exit;
+        }
+
+        if ($descriptionLength > 1000) {
+            $description = $hasMbstring ? mb_substr($description, 0, 1000) : substr($description, 0, 1000);
+        }
+
+        $prompts = load_ai_prompts();
+        $templatePrompt = $prompts['text_analysis'] ?? '';
+
+        if (empty($templatePrompt)) {
+            echo json_encode(['status' => 'error', 'message' => 'KI-Prompt konnte nicht geladen werden (prompts.php)']);
+            exit;
+        }
+
+        $promptText = str_replace('{USER_DESCRIPTION}', $description, $templatePrompt);
+
+        $aiResult = analyze_text_with_gemini($promptText);
+
+        if (!$aiResult['success']) {
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'KI-Analyse fehlgeschlagen: ' . $aiResult['error']
+            ]);
+            exit;
+        }
+
+        $data = $aiResult['data'];
+        if (isset($data['is_food']) && $data['is_food'] === false) {
+            echo json_encode([
+                'status' => 'error',
+                'message' => $data['error_message'] ?? '⚠️ Daraus konnte ich kein Essen oder Getränk erkennen. Bitte beschreibe genauer, was du gegessen hast.'
+            ]);
+            exit;
+        }
+
+        echo json_encode([
+            'status' => 'success',
+            'message' => 'Beschreibung erfolgreich analysiert!',
+            'filename' => '',
+            'path' => '',
+            'uploaded_at' => date('d.m.Y H:i:s'),
+            'data' => $data,
             'model' => $aiResult['model'] ?? null,
             'attempts' => $aiResult['attempts'] ?? null,
             'duration_ms' => $aiResult['duration_ms'] ?? null
@@ -1060,8 +1174,7 @@ if ($isAjaxRequest) {
         exit;
     }
 
-    $promptsFile = __DIR__ . '/prompts.php';
-    $prompts = file_exists($promptsFile) ? require $promptsFile : [];
+    $prompts = load_ai_prompts();
     $promptText = $prompts['image_analysis'] ?? '';
 
     if (empty($promptText)) {
@@ -1223,6 +1336,9 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                         <label for="photo-input-gallery" id="trigger-gallery-btn" class="btn-secondary gallery-trigger-btn">
                             Aus Galerie wählen 🖼️
                         </label>
+                        <button type="button" id="btn-manual-entry" class="btn-secondary manual-entry-btn">
+                            ✍️ Manuelle Eingabe
+                        </button>
                         <button type="button" id="btn-select-favorite" class="btn-secondary select-favorite-btn">
                             ⭐ Aus Favorieten wählen
                         </button>
@@ -1243,6 +1359,7 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                 <div class="card-header">
                     <div class="meal-preview-header">
                         <img id="meal-photo-preview" src="" alt="Mahlzeit Vorschau" class="meal-photo-thumb">
+                        <div id="meal-photo-placeholder" class="meal-photo-thumb meal-photo-placeholder" style="display: none;" aria-hidden="true">✍️</div>
                         <div>
                             <h2 id="meal-title" class="card-title meal-title">Mahlzeit</h2>
                             <span class="status-header-badge">KI-Analyse Überprüfung</span>
@@ -1455,6 +1572,32 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                 <div id="favorites-list-container" class="favorites-list-container">
                     <!-- Dynamic compact favorite list items -->
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Text Entry Modal -->
+    <div id="manual-entry-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-card manual-entry-modal-card">
+            <button id="btn-close-manual-modal" class="modal-close-btn" title="Schließen" aria-label="Schließen">&times;</button>
+            <div class="modal-header">
+                <h2 class="modal-title">✍️ Manuelle <span class="accent-text">Eingabe</span></h2>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="manual-entry-input" class="form-label">
+                        Was hast du gegessen? Beschreibe es möglichst genau inkl. Zutaten. Die KI wird dir eine Analyse erstellen.
+                    </label>
+                    <textarea id="manual-entry-input" class="form-control manual-entry-textarea" rows="5" maxlength="1000"
+                              placeholder="z. B. Käsebrötchen mit Butter und Gouda, oder Chio Chips Paprika 175 g Tüte..."></textarea>
+                    <div id="manual-entry-counter" class="manual-entry-counter">0 / 1000</div>
+                </div>
+                <div id="manual-entry-status" class="status-box" style="display: none;"></div>
+            </div>
+            <div class="modal-footer-actions">
+                <button type="button" id="btn-manual-analyze" class="btn-primary btn-manual-analyze">
+                    Analysieren 🤖
+                </button>
             </div>
         </div>
     </div>

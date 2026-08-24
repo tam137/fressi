@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Form Fields
   const mealPhotoPreview = document.getElementById('meal-photo-preview');
+  const mealPhotoPlaceholder = document.getElementById('meal-photo-placeholder');
   const mealTitle = document.getElementById('meal-title');
   const fieldDate = document.getElementById('field-date');
   const fieldTime = document.getElementById('field-time');
@@ -82,17 +83,22 @@ document.addEventListener('DOMContentLoaded', () => {
       closeFavoritesModal(false);
       return;
     }
-    // 4. Close/discard Validation Card if open -> return to Photo Mode
+    // 4. Close Manual Entry modal if open
+    if (manualEntryModal && manualEntryModal.style.display === 'flex') {
+      closeManualEntryModal(false);
+      return;
+    }
+    // 5. Close/discard Validation Card if open -> return to Photo Mode
     if (validationCard && validationCard.style.display === 'block') {
       resetValidationStateAndShowPhotoView(false);
       return;
     }
-    // 5. Return to Photo Mode if in Stats Card
+    // 6. Return to Photo Mode if in Stats Card
     if (statsCard && statsCard.style.display === 'block') {
       showCameraView(false);
       return;
     }
-    // 6. Return to Photo Mode if in History Card
+    // 7. Return to Photo Mode if in History Card
     if (historyCard && historyCard.style.display === 'block') {
       showCameraView(false);
       return;
@@ -277,9 +283,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Render meal thumbnail, or an emoji placeholder for entries without a photo
+  function renderMealThumbnail() {
+    const hasPhoto = !!currentAnalysis.photoPath;
+
+    if (mealPhotoPreview) {
+      if (hasPhoto) {
+        mealPhotoPreview.src = currentAnalysis.photoPath;
+        mealPhotoPreview.style.display = '';
+      } else {
+        mealPhotoPreview.removeAttribute('src');
+        mealPhotoPreview.style.display = 'none';
+      }
+    }
+
+    if (mealPhotoPlaceholder) {
+      mealPhotoPlaceholder.style.display = hasPhoto ? 'none' : 'flex';
+    }
+  }
+
   // Render Validation Screen
   function renderValidationView(pushState = true) {
-    if (mealPhotoPreview) mealPhotoPreview.src = currentAnalysis.photoPath;
+    renderMealThumbnail();
     if (mealTitle) mealTitle.textContent = currentAnalysis.title;
 
     // Date & time preset (current date & current time in 15min steps)
@@ -508,6 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const formData = new FormData();
       formData.append('action', 'refine_summary');
       formData.append('photo_path', currentAnalysis.photoPath);
+      formData.append('previous_title', currentAnalysis.title);
       formData.append('previous_rating', currentAnalysis.healthRating);
       latestIngredients.forEach(ing => formData.append('ingredients[]', ing));
       formData.append('notes', currentAnalysis.notes);
@@ -627,6 +653,7 @@ document.addEventListener('DOMContentLoaded', () => {
       closeHamburgerDropdown(false);
       closeMealDetailModal(false);
       closeFavoritesModal(false);
+      closeManualEntryModal(false);
       showCameraView(true);
     });
   }
@@ -1366,6 +1393,190 @@ document.addEventListener('DOMContentLoaded', () => {
       toast.style.transition = 'all 0.3s ease-out';
       setTimeout(() => toast.remove(), 300);
     }, 3500);
+  }
+
+  // ==========================================
+  // Manual Text Entry Modal Controller
+  // ==========================================
+  const btnManualEntry = document.getElementById('btn-manual-entry');
+  const manualEntryModal = document.getElementById('manual-entry-modal');
+  const btnCloseManualModal = document.getElementById('btn-close-manual-modal');
+  const manualEntryInput = document.getElementById('manual-entry-input');
+  const manualEntryCounter = document.getElementById('manual-entry-counter');
+  const manualEntryStatus = document.getElementById('manual-entry-status');
+  const btnManualAnalyze = document.getElementById('btn-manual-analyze');
+
+  const MANUAL_ENTRY_MAX_LENGTH = 1000;
+
+  function showManualEntryStatus(msg, type = 'error') {
+    if (!manualEntryStatus) return;
+    manualEntryStatus.className = `status-box status-${type}`;
+    manualEntryStatus.innerHTML = msg;
+    manualEntryStatus.style.display = 'block';
+  }
+
+  function hideManualEntryStatus() {
+    if (!manualEntryStatus) return;
+    manualEntryStatus.style.display = 'none';
+    manualEntryStatus.innerHTML = '';
+  }
+
+  function updateManualEntryCounter() {
+    if (!manualEntryCounter || !manualEntryInput) return;
+    manualEntryCounter.textContent = `${manualEntryInput.value.length} / ${MANUAL_ENTRY_MAX_LENGTH}`;
+  }
+
+  function openManualEntryModal(pushState = true) {
+    if (!manualEntryModal) return;
+    hideManualEntryStatus();
+    updateManualEntryCounter();
+    manualEntryModal.style.display = 'flex';
+
+    // Delay focus so the mobile keyboard opens after the modal fade-in
+    if (manualEntryInput) {
+      setTimeout(() => manualEntryInput.focus(), 50);
+    }
+
+    if (pushState && window.history && window.history.pushState) {
+      window.history.pushState({ view: getCurrentViewName(), modal: 'manual-entry' }, '');
+    }
+  }
+
+  function closeManualEntryModal(triggerHistoryBack = true) {
+    if (!manualEntryModal) return;
+    const isVisible = manualEntryModal.style.display === 'flex';
+    manualEntryModal.style.display = 'none';
+
+    if (isVisible && triggerHistoryBack && window.history && window.history.state && window.history.state.modal === 'manual-entry') {
+      window.history.back();
+    }
+  }
+
+  if (btnManualEntry) {
+    btnManualEntry.addEventListener('click', () => {
+      hideStatus();
+      openManualEntryModal(true);
+    });
+  }
+
+  if (btnCloseManualModal) {
+    btnCloseManualModal.addEventListener('click', () => {
+      closeManualEntryModal(true);
+    });
+  }
+
+  if (manualEntryModal) {
+    manualEntryModal.addEventListener('click', (e) => {
+      if (e.target === manualEntryModal) {
+        closeManualEntryModal(true);
+      }
+    });
+  }
+
+  if (manualEntryInput) {
+    manualEntryInput.addEventListener('input', () => {
+      updateManualEntryCounter();
+      hideManualEntryStatus();
+    });
+
+    // Ctrl/Cmd + Enter submits; a plain Enter stays a line break
+    manualEntryInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        submitManualEntry();
+      }
+    });
+  }
+
+  if (btnManualAnalyze) {
+    btnManualAnalyze.addEventListener('click', () => {
+      submitManualEntry();
+    });
+  }
+
+  async function submitManualEntry() {
+    if (!manualEntryInput) return;
+
+    const description = manualEntryInput.value.trim();
+
+    if (description.length < 3) {
+      showManualEntryStatus('<strong>⚠️ Zu kurz:</strong> Bitte beschreibe etwas genauer, was du gegessen hast.', 'error');
+      return;
+    }
+
+    hideManualEntryStatus();
+
+    if (btnManualAnalyze) {
+      btnManualAnalyze.disabled = true;
+      btnManualAnalyze.innerHTML = `Analysiere... ⏳`;
+    }
+
+    const formData = new FormData();
+    formData.append('action', 'analyze_text');
+    formData.append('description', description);
+
+    try {
+      const response = await fetch('index.php', {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: formData
+      });
+
+      const contentType = response.headers.get('content-type') || '';
+      let result;
+
+      if (contentType.includes('application/json')) {
+        result = await response.json();
+      } else {
+        const text = await response.text();
+        console.warn('Server returned non-JSON response:', text);
+        throw new Error(text.trim() || `Serverfehler (HTTP ${response.status})`);
+      }
+
+      if (response.ok && result.status === 'success' && result.data) {
+        const data = result.data;
+        const baseCalories = parseInt(data.calories, 10) || 0;
+
+        currentAnalysis = {
+          photoPath: '',
+          title: data.title || 'Mahlzeit',
+          ingredients: Array.isArray(data.ingredients) ? data.ingredients : [],
+          healthRating: data.health_rating || '',
+          baseCalories: baseCalories,
+          currentCalories: baseCalories,
+          portion: 100,
+          notes: '',
+          model: result.model || '',
+          attempts: parseInt(result.attempts, 10) || 1,
+          durationMs: parseInt(result.duration_ms, 10) || 0
+        };
+
+        manualEntryInput.value = '';
+        updateManualEntryCounter();
+        closeManualEntryModal(false);
+
+        renderValidationView(false);
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState({ view: 'validation', modal: null }, '');
+        }
+        showToast('Beschreibung erfolgreich analysiert! 🎉');
+      } else {
+        // Keep modal and text open so the user can refine the description
+        const errMsg = result.message || 'Unbekannter Fehler.';
+        showManualEntryStatus(`<strong>❌ Analyse abgelehnt:</strong> ${escapeHtml(errMsg)}`, 'error');
+      }
+    } catch (err) {
+      console.error('Manual entry error:', err);
+      const displayMsg = err.message ? escapeHtml(err.message) : 'Verbindungsfehler.';
+      showManualEntryStatus(`<strong>❌ Fehler:</strong> ${displayMsg}`, 'error');
+    } finally {
+      if (btnManualAnalyze) {
+        btnManualAnalyze.disabled = false;
+        btnManualAnalyze.innerHTML = `Analysieren 🤖`;
+      }
+    }
   }
 
   // ==========================================
