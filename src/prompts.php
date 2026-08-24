@@ -65,7 +65,7 @@ WICHTIG: Antworte AUSSCHLIESSLICH im gültigen JSON-Format ohne Markdown-Codebl�
 - MARKEN- UND FERTIGPRODUKTE: `calories` gilt IMMER für die GESAMTE PACKUNG (ganze Tüte, ganze Tafel, ganze Flasche, ganzes Glas). Die vom Hersteller ausgewiesene "Portion" (z. B. 30 g Chips) und Angaben je 100 g dürfen NICHT als Bezug dienen — sie sind nur Zwischenschritt, um auf die volle Gebindegröße hochzurechnen. Beispiel: "Chio Chips Paprika" (175-g-Tüte) ergibt die Kalorien der KOMPLETTEN 175-g-Tüte, nicht die der 30-g-Portion. Ist die Gebindegröße nicht eindeutig, nimm die gängigste Handelsgröße an und benenne sie.
 - ALLE ÜBRIGEN FÄLLE: Ohne Mengenangabe eine übliche Einzelportion annehmen (z. B. 1 Brötchen, 1 Glas 0,2 l, 1 Teller).
 - AUSDRÜCKLICHE MENGENANGABE DES NUTZERS (z. B. "eine Handvoll Chips", "halbe Tüte", "2 Scheiben", "250 ml") hat IMMER Vorrang und schlägt auch die Packungsregel. Rechne dann exakt auf diese Menge.
-- Nenne den zugrunde gelegten Mengenbezug im ERSTEN SATZ von `health_rating`, z. B. "Angenommen: komplette Tüte (175 g)." oder "Angenommen: 1 Brötchen (ca. 60 g)."
+- Nenne den zugrunde gelegten Mengenbezug im ERSTEN SATZ von `health_rating` — aber als klare, selbstbewusste Feststellung, NICHT als Vermutung oder Rückfrage. Verwende KEINE unsicheren Formulierungen wie "Angenommen", "Vermutlich", "Wahrscheinlich" oder "Ich gehe davon aus". Formuliere stattdessen direkt, z. B. "Basis: komplette Tüte (175 g)." oder "Berechnet für 1 Brötchen (ca. 60 g)."
 
 4. STRUKTURIERTE AUSGABE:
 Gib folgendes JSON-Objekt zurück:
