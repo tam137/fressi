@@ -13,30 +13,8 @@ if (!check_remember_me()) {
     exit;
 }
 
-try {
-    $pdo = get_db_connection();
-    $stmt = $pdo->prepare("SELECT id, username, is_active, role FROM accounts WHERE id = :id");
-    $stmt->execute(['id' => $_SESSION['user_id']]);
-    $user = $stmt->fetch();
-
-    if (!$user || !$user['is_active']) {
-        if ((!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || isset($_POST['ajax_upload'])) {
-            header('Content-Type: application/json');
-            echo json_encode(['status' => 'error', 'message' => 'Konto deaktiviert.']);
-            exit;
-        }
-        header('Location: logout.php');
-        exit;
-    }
-} catch (Exception $e) {
-    error_log("Security check failed: " . $e->getMessage());
-    if ((!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || isset($_POST['ajax_upload'])) {
-        header('Content-Type: application/json');
-        echo json_encode(['status' => 'error', 'message' => 'Systemfehler. Zugriff verweigert.']);
-        exit;
-    }
-    die("Systemfehler. Zugriff verweigert.");
-}
+$pdo  = get_db_connection();
+$user = load_current_user($pdo);
 
 /**
  * Normalisiert ein Bild für die Gemini API (konvertiert HEIC, PNG, WEBP, GIF bei Bedarf in JPEG).
@@ -101,7 +79,7 @@ function load_ai_prompts() {
  * @return array ['success' => bool, 'data' => array|null, 'error' => string|null]
  */
 function call_gemini_api($promptText, $inlineImagePart = null) {
-    global $gemini_key, $config, $db_config;
+    global $gemini_key, $config, $db_config, $pdo;
     $apiKey = $gemini_key ?? ($config['gemini_key'] ?? ($db_config['gemini_key'] ?? (getenv('gemini_key') ?: (getenv('GEMINI_KEY') ?: null))));
 
     if (empty($apiKey) || $apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
@@ -118,8 +96,9 @@ function call_gemini_api($promptText, $inlineImagePart = null) {
         $parts[] = $inlineImagePart;
     }
 
-    $models = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
-    $maxPasses = 3;
+    $aiSettings = get_ai_settings($pdo);
+    $models = $aiSettings['models'];
+    $maxPasses = $aiSettings['max_passes'];
     $attemptCount = 0;
     $lastError = 'Unbekannter Fehler';
     $startTime = microtime(true);
@@ -1317,6 +1296,13 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                             <span class="dropdown-icon">📊</span>
                             <span>Statistiken</span>
                         </a>
+                        <?php if (is_admin($user)): ?>
+                            <div class="dropdown-divider"></div>
+                            <a href="admin.php" id="menu-item-admin" class="dropdown-item">
+                                <span class="dropdown-icon">⚙️</span>
+                                <span>Admin</span>
+                            </a>
+                        <?php endif; ?>
                         <div class="dropdown-divider"></div>
                         <a href="logout.php" id="logout-btn" class="dropdown-item dropdown-item-logout">
                             <span class="dropdown-icon">🚪</span>

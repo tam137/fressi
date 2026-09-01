@@ -34,6 +34,74 @@ if (file_exists(__DIR__ . '/../config.php')) {
     die("Konfigurationsdatei config.php nicht gefunden. Bitte kopiere config.example.php nach config.php und trage deine Zugangsdaten ein.");
 }
 
+// Role names as stored in accounts.role (constrained by accounts_role_check)
+const ROLE_ADMIN = 'admin';
+const ROLE_USER  = 'user';
+
+// Fallback AI configuration, used whenever no admin settings are stored
+const AI_DEFAULT_MODELS     = ['gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash'];
+const AI_DEFAULT_MAX_PASSES = 3;
+const AI_MAX_MODELS         = 10;
+const AI_MAX_PASSES_LIMIT   = 5;
+
+/**
+ * Detect an AJAX or upload request, so failures can be answered with JSON.
+ */
+function is_ajax_request() {
+    return (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+        || isset($_POST['ajax_upload']);
+}
+
+/**
+ * Load the current account row and enforce that it is still active.
+ *
+ * Terminates the request (JSON for AJAX, redirect otherwise) when the account
+ * is missing or deactivated. Call only after check_remember_me() succeeded.
+ *
+ * @param PDO $pdo
+ * @return array The account row including its current role
+ */
+function load_current_user($pdo) {
+    try {
+        $stmt = $pdo->prepare("SELECT id, username, is_active, role FROM accounts WHERE id = :id");
+        $stmt->execute(['id' => $_SESSION['user_id']]);
+        $user = $stmt->fetch();
+
+        if (!$user || !$user['is_active']) {
+            if (is_ajax_request()) {
+                header('Content-Type: application/json');
+                echo json_encode(['status' => 'error', 'message' => 'Konto deaktiviert.']);
+                exit;
+            }
+            header('Location: logout.php');
+            exit;
+        }
+
+        return $user;
+    } catch (Exception $e) {
+        error_log("Security check failed: " . $e->getMessage());
+        if (is_ajax_request()) {
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'error', 'message' => 'Systemfehler. Zugriff verweigert.']);
+            exit;
+        }
+        die("Systemfehler. Zugriff verweigert.");
+    }
+}
+
+/**
+ * Check the admin role against the account row read from the database.
+ *
+ * Deliberately ignores $_SESSION['role'], which is only refreshed at login and
+ * would stay stale for up to 30 days behind a remember_me cookie.
+ *
+ * @param array|null $user Row returned by load_current_user()
+ * @return bool
+ */
+function is_admin($user) {
+    return is_array($user) && isset($user['role']) && $user['role'] === ROLE_ADMIN;
+}
+
 /**
  * Establish a PDO database connection to the PostgreSQL fressi instance.
  */
@@ -319,5 +387,204 @@ function ensure_favorites_table_exists($pdo) {
         return false;
     }
 }
-?>
 
+/**
+ * Ensure that the app_settings key/value table exists in PostgreSQL.
+ *
+ * @param PDO $pdo
+ * @return bool Returns true if the table exists or was created successfully.
+ */
+function ensure_app_settings_table_exists($pdo) {
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS app_settings (
+                setting_key   VARCHAR(64) PRIMARY KEY,
+                setting_value TEXT NOT NULL,
+                updated_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_by    BIGINT REFERENCES accounts(id) ON DELETE SET NULL
+            );
+        ");
+        return true;
+    } catch (Exception $e) {
+        error_log("Failed to create app_settings table: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Normalise a list of Gemini model names: trim, validate, deduplicate, cap length.
+ *
+ * The name is interpolated into the Gemini API URL, so only safe characters pass.
+ *
+ * @param mixed $models
+ * @return string[] Validated model names in their original order
+ */
+function sanitize_ai_models($models) {
+    if (!is_array($models)) {
+        return [];
+    }
+
+    $clean = [];
+    foreach ($models as $model) {
+        if (!is_string($model)) {
+            continue;
+        }
+        $model = trim($model);
+        if ($model === '' || !preg_match('/^[A-Za-z0-9._-]{1,64}$/', $model)) {
+            continue;
+        }
+        if (in_array($model, $clean, true)) {
+            continue;
+        }
+        $clean[] = $model;
+        if (count($clean) >= AI_MAX_MODELS) {
+            break;
+        }
+    }
+    return $clean;
+}
+
+/**
+ * Read the AI model configuration chosen by an admin.
+ *
+ * Falls back to the built-in defaults whenever nothing valid is stored, so a
+ * settings problem can never break the AI analysis. The result is cached per
+ * request; pass $forceReload after a write.
+ *
+ * @param PDO|null $pdo
+ * @param bool $forceReload
+ * @return array ['models' => string[], 'max_passes' => int, 'updated_at' => ?string,
+ *                'updated_by' => ?string, 'is_default' => bool]
+ */
+function get_ai_settings($pdo, $forceReload = false) {
+    static $cached = null;
+
+    if ($cached !== null && !$forceReload) {
+        return $cached;
+    }
+
+    $settings = [
+        'models'     => AI_DEFAULT_MODELS,
+        'max_passes' => AI_DEFAULT_MAX_PASSES,
+        'updated_at' => null,
+        'updated_by' => null,
+        'is_default' => true
+    ];
+
+    // Without a connection, stay on the defaults but do not cache them:
+    // a later call in the same request may well have one.
+    if (!($pdo instanceof PDO)) {
+        return $settings;
+    }
+
+    try {
+        $stmt = $pdo->query("
+            SELECT s.setting_key, s.setting_value, s.updated_at, a.username
+            FROM app_settings s
+            LEFT JOIN accounts a ON s.updated_by = a.id
+            WHERE s.setting_key IN ('ai_models', 'ai_max_passes')
+        ");
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        // Table missing or unreadable — the defaults keep the analysis working.
+        error_log("Failed to read AI settings, using defaults: " . $e->getMessage());
+        return $settings;
+    }
+
+    foreach ($rows as $row) {
+        if ($row['setting_key'] === 'ai_models') {
+            $decoded = json_decode($row['setting_value'], true);
+            $models = sanitize_ai_models($decoded);
+            if (!empty($models)) {
+                $settings['models'] = $models;
+                $settings['is_default'] = false;
+            }
+        } elseif ($row['setting_key'] === 'ai_max_passes') {
+            $passes = filter_var($row['setting_value'], FILTER_VALIDATE_INT);
+            if ($passes !== false && $passes >= 1 && $passes <= AI_MAX_PASSES_LIMIT) {
+                $settings['max_passes'] = $passes;
+                $settings['is_default'] = false;
+            }
+        }
+
+        if (!empty($row['updated_at']) && ($settings['updated_at'] === null || $row['updated_at'] > $settings['updated_at'])) {
+            $settings['updated_at'] = $row['updated_at'];
+            $settings['updated_by'] = $row['username'];
+        }
+    }
+
+    $cached = $settings;
+    return $settings;
+}
+
+/**
+ * Validate and persist the AI model configuration. Admin-only caller.
+ *
+ * @param PDO $pdo
+ * @param mixed $models Ordered list of model names
+ * @param mixed $maxPasses Number of passes over the model list
+ * @param int $accountId Account performing the change
+ * @return array ['success' => bool, 'error' => string|null]
+ */
+function save_ai_settings($pdo, $models, $maxPasses, $accountId) {
+    $models = sanitize_ai_models($models);
+    if (empty($models)) {
+        return ['success' => false, 'error' => 'Bitte gib mindestens ein gültiges Modell an.'];
+    }
+
+    $passes = filter_var($maxPasses, FILTER_VALIDATE_INT);
+    if ($passes === false || $passes < 1 || $passes > AI_MAX_PASSES_LIMIT) {
+        return ['success' => false, 'error' => 'Die Anzahl der Durchläufe muss zwischen 1 und ' . AI_MAX_PASSES_LIMIT . ' liegen.'];
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO app_settings (setting_key, setting_value, updated_at, updated_by)
+            VALUES (:key, :value, CURRENT_TIMESTAMP, :account_id)
+            ON CONFLICT (setting_key) DO UPDATE
+            SET setting_value = EXCLUDED.setting_value,
+                updated_at    = EXCLUDED.updated_at,
+                updated_by    = EXCLUDED.updated_by
+        ");
+
+        $pdo->beginTransaction();
+        $stmt->execute([
+            'key' => 'ai_models',
+            'value' => json_encode(array_values($models)),
+            'account_id' => $accountId
+        ]);
+        $stmt->execute([
+            'key' => 'ai_max_passes',
+            'value' => (string)$passes,
+            'account_id' => $accountId
+        ]);
+        $pdo->commit();
+
+        get_ai_settings($pdo, true);
+        return ['success' => true, 'error' => null];
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("Failed to save AI settings: " . $e->getMessage());
+        return ['success' => false, 'error' => 'Die Einstellungen konnten nicht gespeichert werden.'];
+    }
+}
+
+/**
+ * Drop the stored AI configuration so the built-in defaults apply again.
+ *
+ * @param PDO $pdo
+ * @return array ['success' => bool, 'error' => string|null]
+ */
+function reset_ai_settings($pdo) {
+    try {
+        $pdo->exec("DELETE FROM app_settings WHERE setting_key IN ('ai_models', 'ai_max_passes')");
+        get_ai_settings($pdo, true);
+        return ['success' => true, 'error' => null];
+    } catch (Exception $e) {
+        error_log("Failed to reset AI settings: " . $e->getMessage());
+        return ['success' => false, 'error' => 'Die Einstellungen konnten nicht zurückgesetzt werden.'];
+    }
+}
+?>
