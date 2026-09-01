@@ -43,10 +43,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($form === 'gemini_key') {
         if (isset($_POST['delete_key'])) {
-            if (delete_user_setting($pdo, $user['id'], USER_SETTING_GEMINI_KEY)) {
-                $key_success = 'Dein Schlüssel wurde gelöscht. Es gilt wieder der Standard-Schlüssel.';
-            } else {
+            $removed = delete_user_setting($pdo, $user['id'], USER_SETTING_GEMINI_KEY);
+            if ($removed === false) {
                 $key_error = 'Der Schlüssel konnte nicht gelöscht werden.';
+            } elseif ($removed > 0) {
+                $key_success = 'Dein Schlüssel wurde gelöscht. Es gilt wieder der Standard-Schlüssel der App.';
+            } else {
+                $key_success = 'Es war kein eigener Schlüssel hinterlegt.';
             }
         } else {
             $clean = sanitize_gemini_key($_POST['gemini_key'] ?? '');
@@ -67,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Status des hinterlegten Schlüssels — der Wert selbst wird nie wieder ausgegeben
+get_user_gemini_key($pdo, $user['id'], true);
 $stored_key    = get_user_setting($pdo, $user['id'], USER_SETTING_GEMINI_KEY);
 $has_key       = ($stored_key !== null);
 $key_plain     = $has_key ? decrypt_user_secret($stored_key) : null;
@@ -281,6 +285,38 @@ unset($key_plain);
             font-family: var(--font-mono);
         }
 
+        .key-delete-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.6rem 0.85rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .btn-delete {
+            padding: 0.7rem 1.2rem;
+            border-radius: var(--radius-full);
+            background: var(--bg-card);
+            color: var(--accent-terracotta);
+            border: 2px solid var(--accent-terracotta);
+            font-family: var(--font-heading);
+            font-weight: 700;
+            font-size: 0.95rem;
+            white-space: nowrap;
+            transition: all var(--transition-fast);
+        }
+
+        .btn-delete:hover {
+            background: var(--accent-terracotta);
+            color: #ffffff;
+        }
+
+        .key-delete-hint {
+            color: var(--text-muted);
+            font-size: 0.82rem;
+            line-height: 1.4;
+        }
+
         .settings-actions {
             display: flex;
             flex-wrap: wrap;
@@ -324,6 +360,7 @@ unset($key_plain);
             .settings-title { font-size: 1.6rem; }
             .btn-primary { min-width: 100%; }
             .btn-secondary { width: 100%; }
+            .btn-delete { width: 100%; }
         }
     </style>
 </head>
@@ -428,6 +465,16 @@ unset($key_plain);
                     </div>
                 <?php endif; ?>
 
+                <?php if ($has_key): ?>
+                    <div class="key-delete-row">
+                        <button type="submit" name="delete_key" value="1" class="btn-delete"
+                                id="key-delete" formnovalidate>
+                            🗑 Schlüssel löschen
+                        </button>
+                        <span class="key-delete-hint">Danach laufen deine Analysen wieder über den Standard-Schlüssel.</span>
+                    </div>
+                <?php endif; ?>
+
                 <div class="form-group">
                     <label for="gemini_key" class="form-label">
                         <?php echo $has_key ? 'Neuer Schlüssel' : 'API-Schlüssel'; ?>
@@ -442,12 +489,9 @@ unset($key_plain);
                 </div>
 
                 <div class="settings-actions">
-                    <button type="submit" class="btn-primary">Schlüssel speichern</button>
-                    <?php if ($has_key): ?>
-                        <button type="submit" name="delete_key" value="1" class="btn-secondary" formnovalidate>
-                            Schlüssel löschen
-                        </button>
-                    <?php endif; ?>
+                    <button type="submit" class="btn-primary">
+                        <?php echo $has_key ? 'Schlüssel ersetzen' : 'Schlüssel speichern'; ?>
+                    </button>
                 </div>
             </div>
         </form>
@@ -481,6 +525,16 @@ unset($key_plain);
         pw.addEventListener('input', checkRules);
         repeat.addEventListener('input', checkRules);
         checkRules();
+
+        // Deleting the key cannot be undone, so ask first
+        var deleteBtn = document.getElementById('key-delete');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', function (event) {
+                if (!confirm('Deinen eigenen Gemini-Schlüssel wirklich löschen? Danach wird wieder der Standard-Schlüssel verwendet.')) {
+                    event.preventDefault();
+                }
+            });
+        }
 
         // Show/hide the API key while typing it
         var keyInput = document.getElementById('gemini_key');

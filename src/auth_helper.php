@@ -779,7 +779,7 @@ function set_user_setting($pdo, $accountId, $key, $value) {
  * @param PDO $pdo
  * @param int $accountId
  * @param string $key
- * @return bool
+ * @return int|false Number of rows removed, or false when the statement failed
  */
 function delete_user_setting($pdo, $accountId, $key) {
     try {
@@ -787,7 +787,7 @@ function delete_user_setting($pdo, $accountId, $key) {
             DELETE FROM user_settings WHERE account_id = :account_id AND setting_key = :key
         ");
         $stmt->execute(['account_id' => $accountId, 'key' => $key]);
-        return true;
+        return $stmt->rowCount();
     } catch (Exception $e) {
         error_log("Failed to delete user setting '" . $key . "': " . $e->getMessage());
         return false;
@@ -822,10 +822,15 @@ function sanitize_gemini_key($key) {
  *
  * @param PDO|null $pdo
  * @param int|null $accountId
+ * @param bool $forceReload Pass true after writing or deleting the key
  * @return string|null
  */
-function get_user_gemini_key($pdo, $accountId) {
+function get_user_gemini_key($pdo, $accountId, $forceReload = false) {
     static $cache = [];
+
+    if ($forceReload) {
+        unset($cache[$accountId]);
+    }
 
     if (!($pdo instanceof PDO) || empty($accountId)) {
         return null;
