@@ -24,12 +24,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             $pdo = get_db_connection();
-            $stmt = $pdo->prepare("SELECT * FROM accounts WHERE username = :username");
-            $stmt->execute(['username' => $username]);
-            $user = $stmt->fetch();
+            $client_ip = client_ip();
+            $retry_after = login_throttle_retry_after($pdo, $username, $client_ip);
 
-            if ($user && $user['is_active']) {
+            if ($retry_after > 0) {
+                $minutes = (int) ceil($retry_after / 60);
+                http_response_code(429);
+                header('Retry-After: ' . $retry_after);
+                $error_message = 'Zu viele fehlgeschlagene Anmeldeversuche. Bitte versuche es in '
+                    . $minutes . ' Minute' . ($minutes === 1 ? '' : 'n') . ' erneut.';
+                $user = false;
+            } else {
+                $stmt = $pdo->prepare("SELECT * FROM accounts WHERE username = :username");
+                $stmt->execute(['username' => $username]);
+                $user = $stmt->fetch();
+            }
+
+            if ($retry_after === 0 && $user && $user['is_active']) {
                 if (password_verify($password, $user['password_hash'])) {
+                    // Rotate the session ID on privilege change (session fixation).
+                    session_regenerate_id(true);
+                    clear_failed_logins($pdo, $username);
                     $_SESSION['logged_in'] = true;
                     $_SESSION['user_id'] = $user['id'];
                     $_SESSION['username'] = $user['username'];
@@ -47,7 +62,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            $error_message = 'Ungültiger Benutzername oder Passwort.';
+            if ($retry_after === 0) {
+                record_failed_login($pdo, $username, $client_ip);
+                // Generic error message for security (don't reveal whether user exists)
+                $error_message = 'Ungültiger Benutzername oder Passwort.';
+            }
         } catch (Exception $e) {
             error_log("Login error: " . $e->getMessage());
             $error_message = 'Ein Systemfehler ist aufgetreten. Bitte versuche es später noch einmal.';

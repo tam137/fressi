@@ -957,4 +957,100 @@ function change_user_password($pdo, $accountId, $password) {
 
     return ['success' => true, 'error' => null];
 }
+/**
+ * Brute-force protection for the login form.
+ *
+ * Failed attempts are counted per username and per client IP inside a sliding
+ * window. Once a limit is reached the login is rejected immediately. This is
+ * deliberately counter based rather than a sleep(): Apache runs mpm_prefork
+ * with a worker pool shared by every vhost on this host, so delaying a request
+ * would let an attacker exhaust that pool with a handful of parallel requests,
+ * and it would not slow a parallelised attack down anyway.
+ */
+define('LOGIN_ATTEMPT_WINDOW_MINUTES', 15);
+define('LOGIN_MAX_ATTEMPTS_PER_USER', 8);
+define('LOGIN_MAX_ATTEMPTS_PER_IP', 25);
+
+/**
+ * Client IP of the current request.
+ *
+ * Only REMOTE_ADDR is used. X-Forwarded-For is attacker controlled and there is
+ * no trusted proxy in front of Apache here, so honouring it would let anyone
+ * reset their own attempt counter at will.
+ */
+function client_ip() {
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    return filter_var($ip, FILTER_VALIDATE_IP) ? $ip : '0.0.0.0';
+}
+
+/**
+ * Seconds the caller has to wait before the next login attempt is accepted.
+ * Returns 0 when the request is not throttled.
+ */
+function login_throttle_retry_after($pdo, $username, $ip) {
+    // Column names come from this literal list, never from request data.
+    $checks = [
+        ['column' => 'username', 'value' => $username, 'limit' => LOGIN_MAX_ATTEMPTS_PER_USER],
+        ['column' => 'ip_address', 'value' => $ip, 'limit' => LOGIN_MAX_ATTEMPTS_PER_IP],
+    ];
+
+    $retry_after = 0;
+    foreach ($checks as $check) {
+        $limit = (int) $check['limit'];
+        $window = (int) LOGIN_ATTEMPT_WINDOW_MINUTES;
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) AS cnt, MIN(attempted_at) AS oldest
+            FROM (
+                SELECT attempted_at
+                FROM login_attempts
+                WHERE {$check['column']} = :value
+                  AND attempted_at > CURRENT_TIMESTAMP - INTERVAL '{$window} minutes'
+                ORDER BY attempted_at DESC
+                LIMIT {$limit}
+            ) recent
+        ");
+        $stmt->execute(['value' => $check['value']]);
+        $row = $stmt->fetch();
+
+        if ($row && (int) $row['cnt'] >= $limit && !empty($row['oldest'])) {
+            // Blocked until the oldest attempt still inside the window ages out.
+            $unlock_at = strtotime($row['oldest']) + $window * 60;
+            $retry_after = max($retry_after, $unlock_at - time());
+        }
+    }
+
+    return max(0, $retry_after);
+}
+
+/**
+ * Record a failed login attempt.
+ */
+function record_failed_login($pdo, $username, $ip) {
+    try {
+        $stmt = $pdo->prepare("INSERT INTO login_attempts (username, ip_address) VALUES (:username, :ip)");
+        $stmt->execute(['username' => $username, 'ip' => $ip]);
+
+        // Opportunistic cleanup so the table cannot grow without bound.
+        if (random_int(1, 100) === 1) {
+            $pdo->exec("DELETE FROM login_attempts WHERE attempted_at < CURRENT_TIMESTAMP - INTERVAL '1 day'");
+        }
+    } catch (Exception $e) {
+        error_log("Failed to record login attempt: " . $e->getMessage());
+    }
+}
+
+/**
+ * Drop the recorded failures for a username after a successful login.
+ * The per-IP counter is kept on purpose, so a valid account cannot be used to
+ * reset the counter that limits password spraying from one host.
+ */
+function clear_failed_logins($pdo, $username) {
+    try {
+        $stmt = $pdo->prepare("DELETE FROM login_attempts WHERE username = :username");
+        $stmt->execute(['username' => $username]);
+    } catch (Exception $e) {
+        error_log("Failed to clear login attempts: " . $e->getMessage());
+    }
+}
+
 ?>
