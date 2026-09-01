@@ -44,6 +44,13 @@ const AI_DEFAULT_MAX_PASSES = 3;
 const AI_MAX_MODELS         = 10;
 const AI_MAX_PASSES_LIMIT   = 5;
 
+// Keys stored per account in user_settings
+const USER_SETTING_GEMINI_KEY = 'gemini_api_key';
+
+// Password policy for self-service changes on settings.php
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 128;
+
 /**
  * Detect an AJAX or upload request, so failures can be answered with JSON.
  */
@@ -586,5 +593,363 @@ function reset_ai_settings($pdo) {
         error_log("Failed to reset AI settings: " . $e->getMessage());
         return ['success' => false, 'error' => 'Die Einstellungen konnten nicht zurückgesetzt werden.'];
     }
+}
+
+/**
+ * Ensure that the per-account user_settings key/value table exists.
+ *
+ * Separate from app_settings on purpose: those are global and admin-owned, these
+ * belong to a single account and disappear with it.
+ *
+ * @param PDO $pdo
+ * @return bool Returns true if the table exists or was created successfully.
+ */
+function ensure_user_settings_table_exists($pdo) {
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS user_settings (
+                account_id    INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                setting_key   VARCHAR(64) NOT NULL,
+                setting_value TEXT NOT NULL,
+                updated_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (account_id, setting_key)
+            );
+        ");
+        return true;
+    } catch (Exception $e) {
+        error_log("Failed to create user_settings table: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Secret used to derive the encryption key for values in user_settings.
+ *
+ * Prefers $app_secret from config.php and falls back to the database password, so a
+ * config file that has not been updated yet keeps working. Either way the material
+ * lives outside the database, so a database dump alone cannot decrypt anything.
+ *
+ * @return string|null
+ */
+function app_secret() {
+    global $app_secret, $db_config;
+
+    if (isset($app_secret) && is_string($app_secret)) {
+        $candidate = trim($app_secret);
+        if ($candidate !== '' && $candidate !== 'YOUR_RANDOM_APP_SECRET_HERE') {
+            return $candidate;
+        }
+    }
+
+    if (isset($db_config['password']) && is_string($db_config['password']) && $db_config['password'] !== '') {
+        return $db_config['password'];
+    }
+
+    return null;
+}
+
+/**
+ * Derive the AES key for user secrets from app_secret().
+ *
+ * @return string|null 32 raw bytes, or null when no secret is configured
+ */
+function user_secret_cipher_key() {
+    $secret = app_secret();
+    if ($secret === null || !function_exists('hash_hkdf')) {
+        return null;
+    }
+    return hash_hkdf('sha256', $secret, 32, 'fressi:user_settings:v1');
+}
+
+/**
+ * Encrypt a user secret for storage (AES-256-GCM).
+ *
+ * @param string $plain
+ * @return string|null "v1:" . base64(iv|tag|ciphertext), or null on any failure
+ */
+function encrypt_user_secret($plain) {
+    $key = user_secret_cipher_key();
+    if ($key === null || !function_exists('openssl_encrypt')) {
+        error_log("Cannot encrypt user secret: no app secret or OpenSSL available.");
+        return null;
+    }
+
+    try {
+        $iv  = random_bytes(12);
+        $tag = '';
+        $cipher = openssl_encrypt($plain, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag, '', 16);
+        if ($cipher === false || strlen($tag) !== 16) {
+            return null;
+        }
+        return 'v1:' . base64_encode($iv . $tag . $cipher);
+    } catch (Exception $e) {
+        error_log("Failed to encrypt user secret: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Decrypt a value written by encrypt_user_secret().
+ *
+ * Returns null for anything unreadable (rotated secret, corrupted row), which callers
+ * treat as "no personal value stored" so the application keeps working.
+ *
+ * @param string|null $stored
+ * @return string|null
+ */
+function decrypt_user_secret($stored) {
+    if (!is_string($stored) || strncmp($stored, 'v1:', 3) !== 0) {
+        return null;
+    }
+
+    $key = user_secret_cipher_key();
+    if ($key === null || !function_exists('openssl_decrypt')) {
+        return null;
+    }
+
+    $raw = base64_decode(substr($stored, 3), true);
+    if ($raw === false || strlen($raw) <= 28) {
+        return null;
+    }
+
+    $iv     = substr($raw, 0, 12);
+    $tag    = substr($raw, 12, 16);
+    $cipher = substr($raw, 28);
+
+    $plain = openssl_decrypt($cipher, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
+    return ($plain === false) ? null : $plain;
+}
+
+/**
+ * Read one raw (still encrypted) setting value for an account.
+ *
+ * @param PDO $pdo
+ * @param int $accountId
+ * @param string $key
+ * @return string|null
+ */
+function get_user_setting($pdo, $accountId, $key) {
+    if (!($pdo instanceof PDO) || empty($accountId)) {
+        return null;
+    }
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT setting_value FROM user_settings
+            WHERE account_id = :account_id AND setting_key = :key
+        ");
+        $stmt->execute(['account_id' => $accountId, 'key' => $key]);
+        $value = $stmt->fetchColumn();
+        return ($value === false) ? null : $value;
+    } catch (Exception $e) {
+        error_log("Failed to read user setting '" . $key . "': " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Store one raw setting value for an account.
+ *
+ * @param PDO $pdo
+ * @param int $accountId
+ * @param string $key
+ * @param string $value Already encrypted when it holds a secret
+ * @return bool
+ */
+function set_user_setting($pdo, $accountId, $key, $value) {
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO user_settings (account_id, setting_key, setting_value, updated_at)
+            VALUES (:account_id, :key, :value, CURRENT_TIMESTAMP)
+            ON CONFLICT (account_id, setting_key) DO UPDATE
+            SET setting_value = EXCLUDED.setting_value,
+                updated_at    = EXCLUDED.updated_at
+        ");
+        $stmt->execute(['account_id' => $accountId, 'key' => $key, 'value' => $value]);
+        return true;
+    } catch (Exception $e) {
+        error_log("Failed to write user setting '" . $key . "': " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Remove one setting for an account.
+ *
+ * @param PDO $pdo
+ * @param int $accountId
+ * @param string $key
+ * @return bool
+ */
+function delete_user_setting($pdo, $accountId, $key) {
+    try {
+        $stmt = $pdo->prepare("
+            DELETE FROM user_settings WHERE account_id = :account_id AND setting_key = :key
+        ");
+        $stmt->execute(['account_id' => $accountId, 'key' => $key]);
+        return true;
+    } catch (Exception $e) {
+        error_log("Failed to delete user setting '" . $key . "': " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Validate a Gemini API key entered by a user.
+ *
+ * Deliberately loose — Google's key format is not contractual, so only obviously
+ * wrong input is rejected.
+ *
+ * @param mixed $key
+ * @return string|null The trimmed key, or null when it is not usable
+ */
+function sanitize_gemini_key($key) {
+    if (!is_string($key)) {
+        return null;
+    }
+    $key = trim($key);
+    if ($key === '' || !preg_match('/^[A-Za-z0-9._-]{20,200}$/', $key)) {
+        return null;
+    }
+    return $key;
+}
+
+/**
+ * Read the decrypted personal Gemini key of an account.
+ *
+ * Returns null whenever none is stored or the value cannot be decrypted, so the
+ * caller falls back to the default key from config.php. Cached per request.
+ *
+ * @param PDO|null $pdo
+ * @param int|null $accountId
+ * @return string|null
+ */
+function get_user_gemini_key($pdo, $accountId) {
+    static $cache = [];
+
+    if (!($pdo instanceof PDO) || empty($accountId)) {
+        return null;
+    }
+
+    if (array_key_exists($accountId, $cache)) {
+        return $cache[$accountId];
+    }
+
+    $stored = get_user_setting($pdo, $accountId, USER_SETTING_GEMINI_KEY);
+    $plain  = ($stored === null) ? null : decrypt_user_secret($stored);
+
+    if ($stored !== null && $plain === null) {
+        error_log("Stored Gemini key of account " . (int)$accountId . " could not be decrypted; using the default key.");
+    }
+
+    $cache[$accountId] = $plain;
+    return $plain;
+}
+
+/**
+ * Verify a password against the stored hash of an account.
+ *
+ * @param PDO $pdo
+ * @param int $accountId
+ * @param string $password
+ * @return bool
+ */
+function verify_user_password($pdo, $accountId, $password) {
+    if (!is_string($password) || $password === '') {
+        return false;
+    }
+
+    try {
+        $stmt = $pdo->prepare("SELECT password_hash FROM accounts WHERE id = :id");
+        $stmt->execute(['id' => $accountId]);
+        $hash = $stmt->fetchColumn();
+        if ($hash === false || $hash === null) {
+            return false;
+        }
+        return password_verify($password, $hash);
+    } catch (Exception $e) {
+        error_log("Failed to verify password: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Check a new password against the policy: at least PASSWORD_MIN_LENGTH characters
+ * with an uppercase letter, a lowercase letter and a digit, entered twice.
+ *
+ * @param mixed $password
+ * @param mixed $repeat
+ * @return array ['success' => bool, 'error' => string|null]
+ */
+function validate_new_password($password, $repeat) {
+    if (!is_string($password) || $password === '') {
+        return ['success' => false, 'error' => 'Bitte gib ein neues Passwort ein.'];
+    }
+    if (!is_string($repeat) || $password !== $repeat) {
+        return ['success' => false, 'error' => 'Die beiden Passwörter stimmen nicht überein.'];
+    }
+    if (strlen($password) < PASSWORD_MIN_LENGTH) {
+        return ['success' => false, 'error' => 'Dein Passwort braucht mindestens ' . PASSWORD_MIN_LENGTH . ' Zeichen.'];
+    }
+    if (strlen($password) > PASSWORD_MAX_LENGTH) {
+        return ['success' => false, 'error' => 'Dein Passwort darf höchstens ' . PASSWORD_MAX_LENGTH . ' Zeichen haben.'];
+    }
+    if (!preg_match('/[a-z]/', $password)) {
+        return ['success' => false, 'error' => 'Dein Passwort braucht mindestens einen Kleinbuchstaben.'];
+    }
+    if (!preg_match('/[A-Z]/', $password)) {
+        return ['success' => false, 'error' => 'Dein Passwort braucht mindestens einen Großbuchstaben.'];
+    }
+    if (!preg_match('/[0-9]/', $password)) {
+        return ['success' => false, 'error' => 'Dein Passwort braucht mindestens eine Zahl.'];
+    }
+
+    return ['success' => true, 'error' => null];
+}
+
+/**
+ * Hash and store a new password, then end every other session of that account.
+ *
+ * All remember_me tokens are dropped; the current browser gets a fresh one when it
+ * had one, so only the other devices are logged out.
+ *
+ * @param PDO $pdo
+ * @param int $accountId
+ * @param string $password Already validated by validate_new_password()
+ * @return array ['success' => bool, 'error' => string|null]
+ */
+function change_user_password($pdo, $accountId, $password) {
+    $hash = password_hash($password, PASSWORD_DEFAULT);
+    if ($hash === false) {
+        error_log("password_hash() failed for account " . (int)$accountId);
+        return ['success' => false, 'error' => 'Das Passwort konnte nicht gespeichert werden.'];
+    }
+
+    try {
+        $stmt = $pdo->prepare("UPDATE accounts SET password_hash = :hash WHERE id = :id");
+        $stmt->execute(['hash' => $hash, 'id' => $accountId]);
+    } catch (Exception $e) {
+        error_log("Failed to update password: " . $e->getMessage());
+        return ['success' => false, 'error' => 'Das Passwort konnte nicht gespeichert werden.'];
+    }
+
+    // Invalidate every remember_me token, then re-issue one for this browser only
+    $had_cookie = isset($_COOKIE['remember_me']);
+    try {
+        $stmt_del = $pdo->prepare("DELETE FROM remember_me_tokens WHERE account_id = :id");
+        $stmt_del->execute(['id' => $accountId]);
+    } catch (Exception $e) {
+        error_log("Failed to clear remember me tokens after password change: " . $e->getMessage());
+    }
+
+    if ($had_cookie) {
+        set_remember_token($pdo, $accountId);
+    }
+
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_regenerate_id(true);
+    }
+
+    return ['success' => true, 'error' => null];
 }
 ?>

@@ -82,6 +82,14 @@ function call_gemini_api($promptText, $inlineImagePart = null) {
     global $gemini_key, $config, $db_config, $pdo;
     $apiKey = $gemini_key ?? ($config['gemini_key'] ?? ($db_config['gemini_key'] ?? (getenv('gemini_key') ?: (getenv('GEMINI_KEY') ?: null))));
 
+    // Ein persönlicher Schlüssel aus den Benutzereinstellungen hat Vorrang
+    ensure_user_settings_table_exists($pdo);
+    $userKey = get_user_gemini_key($pdo, $_SESSION['user_id'] ?? null);
+    $usingUserKey = ($userKey !== null);
+    if ($usingUserKey) {
+        $apiKey = $userKey;
+    }
+
     if (empty($apiKey) || $apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
         return [
             'success' => false,
@@ -154,6 +162,9 @@ function call_gemini_api($promptText, $inlineImagePart = null) {
                 $msg = $errorData['error']['message'] ?? ('HTTP Status ' . $httpCode);
                 $lastError = 'Gemini API Fehler (' . $model . '): ' . $msg;
                 if ($httpCode === 401 || $httpCode === 403) {
+                    if ($usingUserKey) {
+                        $lastError = 'Dein eigener Gemini-Schlüssel wurde abgelehnt. Prüfe ihn in den Einstellungen.';
+                    }
                     break 2;
                 }
                 continue;
@@ -1296,8 +1307,12 @@ $buildDateFormatted = date('d.m.Y, H:i', $buildTimestamp) . ' Uhr';
                             <span class="dropdown-icon">📊</span>
                             <span>Statistiken</span>
                         </a>
+                        <div class="dropdown-divider"></div>
+                        <a href="settings.php" id="menu-item-settings" class="dropdown-item">
+                            <span class="dropdown-icon">👤</span>
+                            <span>Einstellungen</span>
+                        </a>
                         <?php if (is_admin($user)): ?>
-                            <div class="dropdown-divider"></div>
                             <a href="admin.php" id="menu-item-admin" class="dropdown-item">
                                 <span class="dropdown-icon">⚙️</span>
                                 <span>Admin</span>
