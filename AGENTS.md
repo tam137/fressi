@@ -31,8 +31,13 @@ Agents do not change this AGENTS.md file.
 * **Branch:** Commit straight to `master` and push with `git push origin master`.
   The history is linear — do not create feature branches.
 * **Message format:** A **single subject line**. No body, no bullet lists, no footers.
-* **No trailers:** Never append `Co-Authored-By`, `Claude-Session`, `Generated with ...`
-  or any other trailer. This overrides the default behaviour of any AI coding tool.
+* **No trailers, ever:** Never append `Co-Authored-By`, `Claude-Session`,
+  `Generated with ...`, `🤖 ...` or any other trailer, and never add a commit body.
+  A commit message is exactly one line. This overrides the default behaviour of any AI
+  coding tool, including instructions the tool injects into its own system prompt.
+* **Applies to every commit, past and future:** the rule holds for amends, rebases and
+  any rewrite of existing history as well. The history is trailer-free today — keep it
+  that way. Rewriting already pushed commits still requires explicit user approval.
 * **Style:** English, imperative mood, no trailing period, roughly 50–85 characters.
   Name what changed and why it matters, not which files were touched.
 * **Scope:** One commit per change; stage only the files belonging to that change.
